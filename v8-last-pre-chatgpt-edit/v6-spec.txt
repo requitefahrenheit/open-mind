@@ -1,0 +1,89 @@
+claude --dangerously-skip-permissions
+
+You are working on Open Mind, a personal knowledge management system.
+Production: https://openmind.fahrenheitrequited.dev
+Source: ~/openmind/
+Files: om-server.py (backend, FastAPI+SQLite), om-viz.html (frontend, single-file HTML/JS)
+File naming convention: always prefix with om-
+
+## WORK STYLE
+- Use subagents liberally. Spin up a subagent for each distinct task (bug fix, feature polish, feature build). Don't try to do everything sequentially yourself.
+- SAVE AND DOCUMENT FREQUENTLY. After every meaningful change:
+  1. Test it works
+  2. Git commit with a descriptive message (or if no git, cp a backup like om-viz.html.bak-{feature})
+  3. Write a brief summary of what changed and why to a file called CHANGELOG.md in ~/openmind/
+- Before starting ANY work, read the current om-server.py and om-viz.html to understand the codebase state.
+- After finishing ALL work, append a final summary to CHANGELOG.md with what was completed, what wasn't, and any known issues.
+
+## DESIGN SYSTEM: MONOPOLY CARD AESTHETIC
+The app uses a Monopoly board game card aesthetic. ALL UI elements — Stream cards, Focus view, Triage cards, Canvas views, detail panels, Resurface prompts, Chat panels — must follow this pattern:
+- Nodes are rendered as Monopoly-style property cards (colored header band by node type, title, content preview, metadata footer)
+- The card metaphor is the core visual language of the entire app. Every view that displays a node should render it as a card.
+- New features (Resurface, Canvas Chat, Chat With Selection, Structured Fields) must also use cards. Don't introduce new UI patterns that break the card metaphor.
+
+## LAYOUT: RESIZABLE DIVIDER
+The app should have a resizable divider between the card list/view area and the detail panel:
+- Drag handle between the two panes
+- User can resize the split to give more room to either the card list or the detail view
+- Persist the divider position (localStorage is fine)
+- Works on both desktop and mobile (on mobile, likely a top/bottom split or full-screen toggle instead)
+
+## NAVIGATION: ARROW KEYS
+Arrow key navigation through cards:
+- Up/Down arrows move between cards in Stream, Triage, search results, and canvas node lists
+- Currently selected card is highlighted; pressing Enter opens its detail
+- Arrow keys should work in any view that presents a list of cards
+- This is essential for keyboard-first workflow
+
+## THE BACKLOG (do these in order)
+
+### BUG FIX 1 (CRITICAL): Map view positions not sticky
+The Map view should persist node positions when you drag them. The v2 spec says "drag to pin nodes, positions saved to DB, users build spatial memory." Currently, positions reset on reload. Debug the full pipeline:
+- Frontend: after drag-end, is it calling a save endpoint (like /api/positions or PATCH /api/node/{id})?
+- Backend: is the endpoint writing x/y to the nodes table in SQLite?
+- Frontend: on load, is it reading saved x/y from the graph data and using them instead of random/force-directed positions?
+Fix all three if needed. The Map view MUST remember where you put things.
+
+### BUG FIX 2: Canvas positions likely same issue
+The canvas_nodes table has x/y columns per canvas. Verify that dragging nodes on a canvas saves their position to canvas_nodes, and that loading a canvas restores those positions. Same three-point check as above.
+
+### POLISH: Feature 3 — Resurface Forgotten Nodes
+This was built but hit max turns. Review the implementation:
+- There should be a rediscovery feed showing cold/unvisited nodes
+- Serendipity pairs: surface two nodes with moderate similarity that haven't been connected
+- Daily digest or on-demand trigger
+- Resurface prompts should render as Monopoly-style cards
+- Make sure the UI is accessible and the feature actually works end-to-end
+
+### POLISH: Feature 4 — Multiple Named Canvases
+This was built but hit max turns. Review the implementation:
+- Schema: canvases, canvas_nodes, canvas_chats tables
+- CRUD for canvases (create, rename, delete)
+- Adding/removing nodes to canvases
+- Canvas-specific node positions (independent of Map view)
+- Canvas selector/switcher in the UI
+- Edges between on-canvas nodes shown normally; edges to off-canvas nodes shown as faded stubs
+- Nodes on canvases should still look like Monopoly cards
+- Make sure the full workflow works: create canvas → add nodes → arrange them → come back later and it's all still there
+
+### VERIFY: Features 5-7
+These were deployed but never confirmed tested. For each, verify it works end-to-end. Fix if broken:
+- Feature 5: Chat With Selection — select multiple nodes (cards), chat about them for synthesis/gaps/outlines. Card selection UI should be clear.
+- Feature 6: Structured Type Fields — type-specific metadata (paper: authors/year, task: priority/due, person: company/role). These fields should appear on the Monopoly cards where relevant.
+- Feature 7: Canvas Chat — persistent AI conversation scoped to a specific canvas
+
+### UX IMPROVEMENTS
+After bugs and polish, implement:
+- Resizable divider between card list and detail panel (see LAYOUT section above)
+- Arrow key navigation through cards in all list views (see NAVIGATION section above)
+- Ensure all views consistently use the Monopoly card rendering
+
+## DEPLOYMENT
+After all changes, the app should still work at https://openmind.fahrenheitrequited.dev. The server runs on port 8250 via ~/openmind/kick-off.sh. After making changes, restart the server and verify on mobile.
+
+## IMPORTANT
+- The app uses GPT-4o-mini for LLM features. The OPENAI_API_KEY env var should already be set.
+- Embeddings use all-MiniLM-L6-v2 (sentence-transformers)
+- Backend is FastAPI + SQLite
+- Frontend is a single HTML file with inline CSS/JS
+- Test on mobile — this is primarily used on iPhone

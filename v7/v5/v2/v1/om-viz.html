@@ -1,0 +1,3000 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Open Mind</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,wght@0,300;0,400;0,500;0,700;1,400&family=JetBrains+Mono:wght@300;400;500&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg: #0a0a0f;
+  --bg2: #12121a;
+  --bg3: #1a1a26;
+  --surface: #1e1e2e;
+  --border: #2a2a3e;
+  --text: #e0dfe8;
+  --text-dim: #7a7a92;
+  --text-muted: #4a4a62;
+  --accent: #6ee7b7;
+  --accent2: #34d399;
+  --accent-dim: rgba(110, 231, 183, 0.15);
+  --warm: #fbbf24;
+  --hot: #f97316;
+  --cool: #60a5fa;
+  --idea: #a78bfa;
+  --url: #38bdf8;
+  --paper: #fb923c;
+  --project: #4ade80;
+  --task: #f472b6;
+  --image-c: #e879f9;
+  --daily: #94a3b8;
+  --inbox-pulse: rgba(110, 231, 183, 0.4);
+  --font: 'DM Sans', sans-serif;
+  --mono: 'JetBrains Mono', monospace;
+  --radius: 10px;
+  --shadow: 0 8px 32px rgba(0,0,0,0.5);
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+html, body { 
+  width: 100%; height: 100%; overflow: hidden;
+  font-family: var(--font); background: var(--bg); color: var(--text);
+}
+
+::selection { background: var(--accent); color: var(--bg); }
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+
+/* ─── Canvas ─────────────────────────────── */
+#graph-canvas {
+  position: absolute; inset: 0;
+  cursor: grab;
+}
+#graph-canvas.dragging { cursor: grabbing; }
+#graph-canvas.node-hover { cursor: pointer; }
+
+/* ─── Top Bar ────────────────────────────── */
+#top-bar {
+  position: fixed; top: 0; left: 0; right: 0;
+  height: 52px;
+  display: flex; align-items: center;
+  padding: 0 20px;
+  background: linear-gradient(180deg, rgba(10,10,15,0.95) 0%, rgba(10,10,15,0) 100%);
+  z-index: 100;
+  pointer-events: none;
+}
+#top-bar > * { pointer-events: all; }
+
+.logo {
+  font-weight: 700; font-size: 15px;
+  letter-spacing: -0.5px;
+  color: var(--accent);
+  display: flex; align-items: center; gap: 8px;
+}
+.logo-dot {
+  width: 8px; height: 8px; border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 0 12px var(--accent);
+  animation: pulse-dot 3s ease-in-out infinite;
+}
+@keyframes pulse-dot {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.6; transform: scale(0.8); }
+}
+
+#stats-bar {
+  margin-left: auto;
+  display: flex; gap: 16px; align-items: center;
+  font-family: var(--mono); font-size: 11px;
+  color: var(--text-dim);
+}
+.stat-item { display: flex; align-items: center; gap: 4px; }
+.stat-dot {
+  width: 6px; height: 6px; border-radius: 50%;
+}
+
+/* ─── Input Bar ──────────────────────────── */
+#input-area {
+  position: fixed; bottom: 24px;
+  left: 50%; transform: translateX(-50%);
+  width: min(640px, calc(100% - 40px));
+  z-index: 200;
+}
+
+#input-wrapper {
+  display: flex; align-items: center;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 4px 6px 4px 18px;
+  box-shadow: var(--shadow), 0 0 0 1px rgba(110,231,183,0.05);
+  transition: border-color 0.3s, box-shadow 0.3s;
+}
+#input-wrapper:focus-within {
+  border-color: var(--accent);
+  box-shadow: var(--shadow), 0 0 20px rgba(110,231,183,0.1);
+}
+
+#main-input {
+  flex: 1; border: none; outline: none;
+  background: transparent; color: var(--text);
+  font-family: var(--font); font-size: 14px;
+  padding: 10px 0;
+  font-weight: 400;
+}
+#main-input::placeholder { color: var(--text-muted); }
+
+.input-btn {
+  width: 36px; height: 36px; border-radius: 10px;
+  border: none; background: transparent;
+  color: var(--text-dim); cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  transition: all 0.2s;
+  flex-shrink: 0;
+}
+.input-btn:hover { background: var(--accent-dim); color: var(--accent); }
+.input-btn.recording { 
+  background: rgba(239,68,68,0.2); color: #ef4444;
+  animation: rec-pulse 1s ease-in-out infinite;
+}
+@keyframes rec-pulse {
+  0%, 100% { box-shadow: none; }
+  50% { box-shadow: 0 0 12px rgba(239,68,68,0.3); }
+}
+
+#send-btn {
+  background: var(--accent); color: var(--bg);
+  border-radius: 10px;
+}
+#send-btn:hover { background: var(--accent2); }
+
+/* ─── Hints ──────────────────────────────── */
+#input-hints {
+  display: flex; gap: 6px; margin-top: 8px;
+  justify-content: center; flex-wrap: wrap;
+}
+.hint-chip {
+  font-size: 11px; font-family: var(--mono);
+  color: var(--text-muted);
+  background: rgba(30,30,46,0.7);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 3px 10px;
+  cursor: pointer;
+  transition: all 0.2s;
+  backdrop-filter: blur(8px);
+}
+.hint-chip:hover {
+  color: var(--accent); border-color: var(--accent);
+  background: var(--accent-dim);
+}
+
+/* ─── Detail Panel ───────────────────────── */
+#detail-panel {
+  position: fixed; top: 0; right: -400px; bottom: 0;
+  width: 380px;
+  background: var(--bg2);
+  border-left: 1px solid var(--border);
+  z-index: 300;
+  transition: right 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+  display: flex; flex-direction: column;
+  box-shadow: -8px 0 32px rgba(0,0,0,0.5);
+}
+#detail-panel.open { right: 0; }
+
+#detail-header {
+  display: flex; align-items: center;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--border);
+  gap: 12px;
+}
+#detail-type-badge {
+  font-family: var(--mono); font-size: 10px; font-weight: 500;
+  text-transform: uppercase; letter-spacing: 1px;
+  padding: 3px 8px; border-radius: 4px;
+  background: var(--accent-dim); color: var(--accent);
+}
+#detail-close {
+  margin-left: auto;
+  width: 28px; height: 28px; border-radius: 6px;
+  border: 1px solid var(--border); background: transparent;
+  color: var(--text-dim); cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 14px;
+  transition: all 0.2s;
+}
+#detail-close:hover { background: var(--surface); color: var(--text); }
+
+#detail-body {
+  flex: 1; overflow-y: auto;
+  padding: 20px;
+}
+
+#detail-label {
+  font-size: 18px; font-weight: 600;
+  margin-bottom: 6px;
+  line-height: 1.3;
+}
+#detail-meta {
+  font-size: 13px; line-height: 1.5;
+  color: var(--text);
+  margin-bottom: 16px;
+  padding: 10px 12px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  display: flex; gap: 14px; flex-wrap: wrap;
+}
+#detail-meta .meta-item {
+  display: flex; align-items: center; gap: 5px;
+}
+#detail-meta .meta-label {
+  font-family: var(--mono); font-size: 10px;
+  text-transform: uppercase; letter-spacing: 0.5px;
+  color: var(--text-muted);
+}
+#detail-meta .meta-value {
+  font-weight: 500;
+}
+#detail-content {
+  font-size: 13.5px; line-height: 1.7;
+  color: var(--text-dim);
+  margin-bottom: 10px;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+#detail-url {
+  display: none;
+  font-family: var(--mono); font-size: 12px;
+  color: var(--url);
+  text-decoration: none;
+  margin-bottom: 10px;
+  word-break: break-all;
+}
+#detail-url:hover { text-decoration: underline; }
+
+#detail-image {
+  display: none;
+  width: 100%; border-radius: var(--radius);
+  margin-bottom: 10px;
+  border: 1px solid var(--border);
+}
+#detail-archive {
+  display: none;
+  font-family: var(--mono); font-size: 12px;
+  color: var(--accent);
+  text-decoration: none;
+  margin-bottom: 16px;
+  cursor: pointer;
+}
+#detail-archive:hover { text-decoration: underline; }
+#detail-pdf {
+  display: none;
+  font-family: var(--mono); font-size: 12px;
+  color: #fb923c;
+  text-decoration: none;
+  margin-bottom: 16px;
+  padding: 6px 12px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+#detail-pdf:hover { border-color: #fb923c; background: rgba(251,146,60,0.1); }
+#detail-user-notes {
+  display: none;
+  font-size: 13px; line-height: 1.5;
+  color: var(--text);
+  margin-bottom: 12px;
+  padding: 10px 12px;
+  background: rgba(110, 231, 183, 0.06);
+  border-radius: var(--radius);
+  border: 1px solid rgba(110, 231, 183, 0.15);
+  font-style: italic;
+}
+#detail-user-notes::before {
+  content: 'Note: ';
+  font-weight: 500;
+  font-style: normal;
+  color: var(--accent);
+}
+#detail-img-description {
+  display: none;
+  font-size: 12px; line-height: 1.6;
+  color: var(--text-dim);
+  margin-bottom: 16px;
+  padding: 10px;
+  background: var(--surface);
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+}
+#detail-similar-images h4 {
+  font-size: 11px; font-family: var(--mono);
+  color: var(--text-muted); text-transform: uppercase;
+  letter-spacing: 1px; margin: 16px 0 10px;
+}
+.sim-img-grid {
+  display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px;
+}
+.sim-img-item {
+  cursor: pointer; border-radius: 6px; overflow: hidden;
+  border: 1px solid var(--border); aspect-ratio: 1;
+  position: relative; transition: border-color 0.2s;
+}
+.sim-img-item:hover { border-color: var(--accent); }
+.sim-img-item img { width: 100%; height: 100%; object-fit: cover; }
+.sim-img-score {
+  position: absolute; bottom: 0; left: 0; right: 0;
+  padding: 2px 4px; background: rgba(0,0,0,0.7);
+  font-size: 9px; font-family: var(--mono); color: var(--text-dim);
+}
+
+#detail-connections {
+  border-top: 1px solid var(--border);
+  padding-top: 16px;
+}
+#detail-connections h4 {
+  font-size: 11px; font-family: var(--mono);
+  color: var(--text-muted); text-transform: uppercase;
+  letter-spacing: 1px; margin-bottom: 10px;
+}
+.conn-item {
+  display: flex; align-items: center; gap: 8px;
+  padding: 6px 10px; margin-bottom: 4px;
+  border-radius: 6px; cursor: pointer;
+  transition: background 0.2s;
+  font-size: 13px;
+}
+.conn-item:hover { background: var(--surface); }
+.conn-dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
+.conn-label { color: var(--text-dim); font-family: var(--mono); font-size: 10px; margin-left: auto; }
+
+/* Detail actions */
+#detail-actions {
+  padding: 12px 20px;
+  border-top: 1px solid var(--border);
+  display: flex; gap: 6px; flex-wrap: wrap;
+}
+.action-btn {
+  font-family: var(--mono); font-size: 11px;
+  padding: 5px 12px; border-radius: 6px;
+  border: 1px solid var(--border);
+  background: transparent; color: var(--text-dim);
+  cursor: pointer; transition: all 0.2s;
+}
+.action-btn:hover { border-color: var(--accent); color: var(--accent); background: var(--accent-dim); }
+.action-btn.danger:hover { border-color: #ef4444; color: #ef4444; background: rgba(239,68,68,0.1); }
+
+/* ─── Command Palette ────────────────────── */
+#cmd-overlay {
+  position: fixed; inset: 0;
+  background: rgba(0,0,0,0.6);
+  backdrop-filter: blur(8px);
+  z-index: 500;
+  display: none; align-items: flex-start; justify-content: center;
+  padding-top: 20vh;
+}
+#cmd-overlay.open { display: flex; }
+
+#cmd-palette {
+  width: min(500px, 90vw);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  box-shadow: var(--shadow);
+  overflow: hidden;
+}
+#cmd-input {
+  width: 100%; border: none; outline: none;
+  background: transparent; color: var(--text);
+  font-family: var(--mono); font-size: 14px;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--border);
+}
+#cmd-input::placeholder { color: var(--text-muted); }
+#cmd-results {
+  max-height: 300px; overflow-y: auto;
+  padding: 6px;
+}
+.cmd-item {
+  display: flex; align-items: center; gap: 10px;
+  padding: 10px 14px; border-radius: 8px;
+  cursor: pointer; transition: background 0.15s;
+  font-size: 13px;
+}
+.cmd-item:hover, .cmd-item.active { background: var(--accent-dim); }
+.cmd-item-type {
+  font-family: var(--mono); font-size: 10px;
+  color: var(--text-muted); text-transform: uppercase;
+}
+
+/* ─── Toast ──────────────────────────────── */
+#toast-container {
+  position: fixed; top: 60px; right: 20px;
+  z-index: 600;
+  display: flex; flex-direction: column; gap: 8px;
+}
+.toast {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 10px 16px;
+  font-size: 13px;
+  box-shadow: var(--shadow);
+  animation: toast-in 0.3s ease-out;
+  max-width: 320px;
+}
+.toast.success { border-left: 3px solid var(--accent); }
+.toast.error { border-left: 3px solid #ef4444; }
+@keyframes toast-in {
+  from { opacity: 0; transform: translateY(-10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* ─── Search Results Overlay ─────────────── */
+#search-overlay {
+  position: fixed; bottom: 100px;
+  left: 50%; transform: translateX(-50%);
+  width: min(600px, calc(100% - 40px));
+  max-height: 350px; overflow-y: auto;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  box-shadow: var(--shadow);
+  z-index: 190;
+  display: none;
+  padding: 8px;
+}
+#search-overlay.open { display: block; }
+.search-result {
+  display: flex; align-items: center; gap: 10px;
+  padding: 10px 14px; border-radius: 8px;
+  cursor: pointer; transition: background 0.15s;
+}
+.search-result:hover { background: var(--accent-dim); }
+.search-result-label { font-size: 13px; font-weight: 500; }
+.search-result-snippet { font-size: 11px; color: var(--text-dim); margin-top: 2px; }
+.search-result-score {
+  margin-left: auto; font-family: var(--mono);
+  font-size: 10px; color: var(--text-muted);
+}
+
+/* ─── Loading ────────────────────────────── */
+.loading-bar {
+  position: fixed; top: 0; left: 0; right: 0; height: 2px;
+  background: var(--accent);
+  z-index: 999;
+  animation: loading-sweep 1.5s ease-in-out infinite;
+  display: none;
+}
+.loading-bar.active { display: block; }
+@keyframes loading-sweep {
+  0% { transform: translateX(-100%); }
+  50% { transform: translateX(0%); }
+  100% { transform: translateX(100%); }
+}
+
+/* ─── Drop zone ──────────────────────────── */
+#drop-zone {
+  position: fixed; inset: 0;
+  background: rgba(110,231,183,0.05);
+  border: 3px dashed var(--accent);
+  z-index: 400;
+  display: none;
+  align-items: center; justify-content: center;
+  font-size: 18px; font-weight: 500;
+  color: var(--accent);
+}
+#drop-zone.active { display: flex; }
+/* ─── 3D Toggle Button ───────────────────── */
+#toggle-3d {
+  font-family: var(--mono); font-size: 11px; font-weight: 500;
+  padding: 3px 10px; border-radius: 6px;
+  border: 1px solid var(--border);
+  background: transparent; color: var(--text-dim);
+  cursor: pointer; transition: all 0.2s;
+  letter-spacing: 0.5px;
+}
+#toggle-3d:hover { border-color: var(--accent); color: var(--accent); }
+#toggle-3d.active {
+  background: var(--accent); color: var(--bg);
+  border-color: var(--accent);
+  box-shadow: 0 0 12px rgba(110, 231, 183, 0.3);
+}
+
+/* ─── Layout Mode Toggle ────────────────── */
+.mode-toggle {
+  display: inline-flex; gap: 2px;
+  background: var(--bg3); border: 1px solid var(--border);
+  border-radius: 8px; padding: 2px;
+}
+.mode-btn {
+  font-family: var(--mono); font-size: 11px; font-weight: 500;
+  padding: 4px 14px; border: none; border-radius: 6px;
+  background: transparent; color: var(--text);
+  cursor: pointer; transition: all 0.15s;
+  letter-spacing: 0.5px;
+  white-space: nowrap;
+}
+.mode-btn:hover { background: rgba(255,255,255,0.08); }
+.mode-btn.active {
+  background: var(--accent); color: var(--bg); font-weight: 700;
+}
+
+/* ─── Reset Button ──────────────────────── */
+.topbar-btn {
+  font-family: var(--mono); font-size: 11px; font-weight: 500;
+  padding: 3px 10px; border-radius: 6px;
+  border: 1px solid var(--border);
+  background: transparent; color: var(--text-muted);
+  cursor: pointer; transition: all 0.2s;
+}
+.topbar-btn:hover { border-color: #ef4444; color: #ef4444; background: rgba(239,68,68,0.1); }
+
+/* ─── Add Dialog ────────────────────────── */
+#add-dialog-overlay {
+  position: fixed; inset: 0;
+  background: rgba(0,0,0,0.6);
+  backdrop-filter: blur(8px);
+  z-index: 500;
+  display: none; align-items: flex-start; justify-content: center;
+  padding-top: 20vh;
+}
+#add-dialog-overlay.open { display: flex; }
+#add-dialog {
+  width: min(440px, 90vw);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  box-shadow: var(--shadow);
+  padding: 20px;
+}
+#add-dialog h3 {
+  font-size: 14px; font-weight: 500; margin-bottom: 16px; color: var(--text);
+}
+.add-option-row {
+  display: flex; align-items: center; gap: 10px; margin-bottom: 12px;
+}
+.add-option-row label {
+  font-family: var(--mono); font-size: 11px; color: var(--text-dim);
+  width: 50px; flex-shrink: 0; text-transform: uppercase; letter-spacing: 0.5px;
+}
+#add-url-input {
+  flex: 1; border: 1px solid var(--border); outline: none;
+  background: var(--bg2); color: var(--text);
+  font-family: var(--font); font-size: 13px;
+  padding: 8px 12px; border-radius: 8px;
+}
+#add-url-input:focus { border-color: var(--accent); }
+#add-url-input::placeholder { color: var(--text-muted); }
+.add-file-btn {
+  flex: 1; padding: 10px; border-radius: 8px;
+  border: 1px dashed var(--border); background: transparent;
+  color: var(--text-dim); font-family: var(--font); font-size: 13px;
+  cursor: pointer; transition: all 0.2s; text-align: center;
+}
+.add-file-btn:hover { border-color: var(--accent); color: var(--accent); background: var(--accent-dim); }
+.add-dialog-actions {
+  display: flex; gap: 8px; justify-content: flex-end; margin-top: 16px;
+}
+.add-dialog-btn {
+  font-family: var(--font); font-size: 13px;
+  padding: 8px 16px; border-radius: 8px;
+  border: 1px solid var(--border);
+  background: transparent; color: var(--text-dim);
+  cursor: pointer; transition: all 0.2s;
+}
+.add-dialog-btn:hover { border-color: var(--accent); color: var(--accent); }
+.add-dialog-btn.primary {
+  background: var(--accent); color: var(--bg);
+  border-color: var(--accent); font-weight: 500;
+}
+.add-dialog-btn.primary:hover { background: var(--accent2); }
+
+/* ─── Note Prompt Modal ──────────────────── */
+#note-modal-overlay {
+  position: fixed; inset: 0;
+  background: rgba(0,0,0,0.6);
+  backdrop-filter: blur(8px);
+  z-index: 500;
+  display: none; align-items: flex-start; justify-content: center;
+  padding-top: 20vh;
+}
+#note-modal-overlay.open { display: flex; }
+#note-modal {
+  width: min(480px, 90vw);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  box-shadow: var(--shadow);
+  overflow: hidden;
+}
+#note-modal-header {
+  padding: 16px 20px 12px;
+  font-size: 14px; font-weight: 500;
+  color: var(--text);
+  border-bottom: 1px solid var(--border);
+  display: flex; align-items: center; gap: 10px;
+}
+#note-modal-preview {
+  font-size: 12px; color: var(--text-dim);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  flex: 1;
+}
+#note-modal-body { padding: 16px 20px; }
+#note-modal-input {
+  width: 100%; border: 1px solid var(--border); outline: none;
+  background: var(--bg2); color: var(--text);
+  font-family: var(--font); font-size: 13px;
+  padding: 10px 14px; border-radius: 8px;
+  resize: vertical; min-height: 60px; max-height: 150px;
+}
+#note-modal-input::placeholder { color: var(--text-muted); }
+#note-modal-input:focus { border-color: var(--accent); }
+#note-modal-actions {
+  display: flex; gap: 8px; justify-content: flex-end;
+  padding: 0 20px 16px;
+}
+.note-modal-btn {
+  font-family: var(--font); font-size: 13px;
+  padding: 8px 16px; border-radius: 8px;
+  border: 1px solid var(--border);
+  background: transparent; color: var(--text-dim);
+  cursor: pointer; transition: all 0.2s;
+}
+.note-modal-btn:hover { border-color: var(--accent); color: var(--accent); }
+.note-modal-btn.primary {
+  background: var(--accent); color: var(--bg);
+  border-color: var(--accent); font-weight: 500;
+}
+.note-modal-btn.primary:hover { background: var(--accent2); }
+
+/* ─── Background Processing Toast ────────── */
+.toast.processing {
+  border-left: 3px solid var(--cool);
+  display: flex; align-items: center; gap: 10px;
+}
+.toast.processing .spinner {
+  width: 14px; height: 14px;
+  border: 2px solid var(--border);
+  border-top-color: var(--cool);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+/* ─── Process Mode ──────────────────────── */
+#process-overlay {
+  position: fixed; inset: 0;
+  background: rgba(10,10,15,0.92);
+  backdrop-filter: blur(12px);
+  z-index: 500;
+  display: none;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 20px;
+}
+#process-overlay.open { display: flex; }
+
+#process-progress {
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--text-muted);
+  letter-spacing: 1px;
+}
+
+#process-card {
+  width: min(500px, calc(100% - 40px));
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 28px;
+  box-shadow: var(--shadow);
+}
+
+#process-type-badge {
+  font-family: var(--mono);
+  font-size: 10px;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  padding: 3px 8px;
+  border-radius: 4px;
+  background: var(--accent-dim);
+  color: var(--accent);
+  display: inline-block;
+  margin-bottom: 12px;
+}
+
+#process-label {
+  font-size: 18px;
+  font-weight: 600;
+  margin-bottom: 8px;
+  line-height: 1.3;
+  color: var(--text);
+}
+
+#process-content {
+  font-size: 13.5px;
+  line-height: 1.7;
+  color: var(--text-dim);
+  margin-bottom: 12px;
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+#process-meta {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--text-muted);
+  display: flex;
+  gap: 12px;
+}
+
+#process-actions {
+  display: flex;
+  gap: 10px;
+}
+
+.process-btn {
+  font-family: var(--mono);
+  font-size: 13px;
+  font-weight: 500;
+  padding: 10px 24px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: transparent;
+  cursor: pointer;
+  transition: all 0.2s;
+  color: var(--text-dim);
+}
+
+.process-btn.promote {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: var(--accent-dim);
+}
+.process-btn.promote:hover {
+  background: var(--accent);
+  color: var(--bg);
+}
+
+.process-btn.skip {
+  color: var(--text-muted);
+}
+.process-btn.skip:hover {
+  border-color: var(--text-dim);
+  color: var(--text-dim);
+  background: rgba(122,122,146,0.1);
+}
+
+.process-btn.delete {
+  border-color: #ef4444;
+  color: #ef4444;
+}
+.process-btn.delete:hover {
+  background: rgba(239,68,68,0.15);
+}
+
+#process-hint {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--text-muted);
+}
+</style>
+<!-- <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script> -->
+</head>
+<body>
+
+<div class="loading-bar" id="loading-bar"></div>
+
+<canvas id="graph-canvas"></canvas>
+<!-- <div id="three-container" style="position:absolute;inset:0;display:none;"></div> -->
+
+<!-- Top Bar -->
+<div id="top-bar">
+  <div class="logo">
+    <div class="logo-dot"></div>
+    Open Mind
+  </div>
+  <div class="mode-toggle" style="margin-left:16px">
+    <button class="mode-btn active" id="mode-semantic">Semantic</button>
+    <button class="mode-btn" id="mode-map">Map</button>
+  </div>
+  <button class="topbar-btn" id="reset-btn" style="margin-left:8px">Zero</button>
+  <div id="stats-bar">
+    <div class="stat-item"><div class="stat-dot" style="background:var(--accent)"></div><span id="stat-nodes">0</span> nodes</div>
+    <div class="stat-item"><div class="stat-dot" style="background:var(--url)"></div><span id="stat-edges">0</span> edges</div>
+    <div class="stat-item"><div class="stat-dot" style="background:var(--warm)"></div><span id="stat-inbox">0</span> inbox</div>
+  </div>
+</div>
+
+<!-- Input Area -->
+<div id="input-area">
+  <div id="input-wrapper">
+    <input type="text" id="main-input" placeholder="Type anything, hit Enter…" autocomplete="off" spellcheck="false" />
+    <button class="input-btn" id="add-btn" title="Add URL, image, or file">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+    </button>
+    <button class="input-btn" id="send-btn" title="Send">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+    </button>
+  </div>
+  <div id="input-hints">
+    <span class="hint-chip" data-hint="show me everything from today">today's nodes</span>
+    <span class="hint-chip" data-hint="what's in my inbox?">inbox</span>
+    <span class="hint-chip" data-hint="find papers about">papers</span>
+    <span class="hint-chip" data-hint="__process__">process inbox</span>
+    <span class="hint-chip" data-hint="/">/cmd</span>
+  </div>
+</div>
+
+<!-- Search Results -->
+<div id="search-overlay"></div>
+
+<!-- Detail Panel -->
+<div id="detail-panel">
+  <div id="detail-header">
+    <div id="detail-type-badge">note</div>
+    <button id="detail-close">✕</button>
+  </div>
+  <div id="detail-body">
+    <div id="detail-label"></div>
+    <div id="detail-meta"></div>
+    <div id="detail-user-notes"></div>
+    <a id="detail-url" target="_blank" rel="noopener"></a>
+    <img id="detail-image" />
+    <div id="detail-img-description"></div>
+    <a id="detail-archive" target="_blank" rel="noopener"></a>
+    <a id="detail-pdf" target="_blank" rel="noopener"></a>
+    <div id="detail-content"></div>
+    <div id="detail-connections">
+      <h4>Connections</h4>
+      <div id="conn-list"></div>
+    </div>
+    <div id="detail-similar-images"></div>
+  </div>
+  <div id="detail-actions">
+    <button class="action-btn" data-action="promote">✓ Promote</button>
+    <button class="action-btn" data-action="star">★ Star</button>
+    <button class="action-btn" data-action="pin">📌 Pin</button>
+    <button class="action-btn danger" data-action="delete">✕ Delete</button>
+  </div>
+</div>
+
+<!-- Command Palette -->
+<div id="cmd-overlay">
+  <div id="cmd-palette">
+    <input type="text" id="cmd-input" placeholder="Search nodes, type + to add, > to link…" autocomplete="off" />
+    <div id="cmd-results"></div>
+  </div>
+</div>
+
+<!-- Drop Zone -->
+<div id="drop-zone">Drop image to add to your mind</div>
+
+<!-- Process Mode Overlay -->
+<div id="process-overlay">
+  <div id="process-progress">1 of 5</div>
+  <div id="process-card">
+    <div id="process-type-badge">note</div>
+    <div id="process-label">Loading...</div>
+    <div id="process-content"></div>
+    <div id="process-meta"></div>
+  </div>
+  <div id="process-actions">
+    <button class="process-btn promote" data-action="promote">Promote (P)</button>
+    <button class="process-btn skip" data-action="skip">Skip (S)</button>
+    <button class="process-btn delete" data-action="delete">Delete (D)</button>
+  </div>
+  <div id="process-hint">ESC to exit &middot; P/S/D keyboard shortcuts</div>
+</div>
+
+<!-- Note Prompt Modal -->
+<div id="note-modal-overlay">
+  <div id="note-modal">
+    <div id="note-modal-header">
+      <span id="note-modal-title">Add a note</span>
+      <span id="note-modal-preview"></span>
+    </div>
+    <div id="note-modal-body">
+      <textarea id="note-modal-input" placeholder="Add a note to attach to this item (optional)…" rows="3"></textarea>
+    </div>
+    <div id="note-modal-actions">
+      <button class="note-modal-btn" id="note-modal-skip">Skip</button>
+      <button class="note-modal-btn primary" id="note-modal-submit">Add</button>
+    </div>
+  </div>
+</div>
+
+<!-- Add Dialog -->
+<div id="add-dialog-overlay">
+  <div id="add-dialog">
+    <h3>Add to Open Mind</h3>
+    <div class="add-option-row">
+      <label>URL</label>
+      <input type="text" id="add-url-input" placeholder="https://…" />
+    </div>
+    <div class="add-option-row">
+      <label>File</label>
+      <button class="add-file-btn" id="add-file-btn">Choose image or PDF…</button>
+    </div>
+    <div class="add-option-row">
+      <label>Voice</label>
+      <button class="add-file-btn" id="add-voice-btn">Record audio</button>
+    </div>
+    <div class="add-dialog-actions">
+      <button class="add-dialog-btn" id="add-dialog-cancel">Cancel</button>
+      <button class="add-dialog-btn primary" id="add-dialog-submit">Add URL</button>
+    </div>
+  </div>
+</div>
+
+<!-- Toast Container -->
+<div id="toast-container"></div>
+
+<!-- Hidden file input -->
+<input type="file" id="file-input" accept="image/*,application/pdf" style="display:none" />
+
+<script>
+// ═══════════════════════════════════════════════════════
+// Open Mind — Force-Directed Graph Frontend
+// ═══════════════════════════════════════════════════════
+
+const API = window.location.origin;
+const canvas = document.getElementById('graph-canvas');
+const ctx = canvas.getContext('2d');
+
+// ─── State ────────────────────────────────
+let nodes = [];
+let edges = [];
+let nodeMap = {};  // id -> node
+let clusters = [];  // cluster data from server
+let collapsedClusters = new Set();  // collapsed cluster IDs
+
+// Camera
+let cam = { x: 0, y: 0, zoom: 1 };
+let targetCam = { x: 0, y: 0, zoom: 1 };
+
+// Interaction
+let dragNode = null;
+let hoveredNode = null;
+let selectedNode = null;
+let isPanning = false;
+let panStart = { x: 0, y: 0 };
+let lastMouse = { x: 0, y: 0 };
+
+// Physics
+let simRunning = true;
+let simAlpha = 1.0;
+const SIM_DECAY = 0.998;
+const REPULSION = 800;
+const ATTRACTION = 0.005;
+const EDGE_LENGTH = 120;
+const DAMPING = 0.85;
+const CENTER_GRAVITY = 0.0005;
+
+// Node sizing
+const NODE_BASE_RADIUS = 18;
+const NODE_MIN_RADIUS = 10;
+const NODE_MAX_RADIUS = 30;
+
+// Colors by type
+const TYPE_COLORS = {
+  idea: '#a78bfa', url: '#38bdf8', paper: '#fb923c',
+  project: '#4ade80', task: '#f472b6', image: '#e879f9',
+  note: '#6ee7b7', daily: '#94a3b8', appointment: '#fbbf24'
+};
+
+// ─── Utilities ────────────────────────────
+function toast(msg, type = 'success') {
+  if (type !== 'error') return;  // Only show errors
+  const el = document.createElement('div');
+  el.className = `toast ${type}`;
+  el.textContent = msg;
+  document.getElementById('toast-container').appendChild(el);
+  setTimeout(() => el.remove(), 3500);
+}
+
+function setLoading(on) {
+  document.getElementById('loading-bar').classList.toggle('active', on);
+}
+
+async function api(path, opts = {}) {
+  const url = `${API}${path}`;
+  try {
+    const headers = opts.headers || {};
+    // Only set Content-Type for JSON if body is a string (not FormData)
+    if (opts.body && typeof opts.body === 'string' && !headers['Content-Type']) {
+      headers['Content-Type'] = 'application/json';
+    }
+    const r = await fetch(url, { ...opts, headers });
+    return await r.json();
+  } catch (e) {
+    console.error('API error:', e);
+    toast('Connection error', 'error');
+    return null;
+  }
+}
+
+// ─── Note Prompt ──────────────────────────
+function promptForNote(title, preview) {
+  return new Promise(resolve => {
+    const overlay = document.getElementById('note-modal-overlay');
+    const input = document.getElementById('note-modal-input');
+    const titleEl = document.getElementById('note-modal-title');
+    const previewEl = document.getElementById('note-modal-preview');
+    const skipBtn = document.getElementById('note-modal-skip');
+    const submitBtn = document.getElementById('note-modal-submit');
+
+    titleEl.textContent = title || 'Add a note';
+    previewEl.textContent = preview || '';
+    input.value = '';
+    overlay.classList.add('open');
+    setTimeout(() => input.focus(), 50);
+
+    function cleanup() {
+      overlay.classList.remove('open');
+      skipBtn.removeEventListener('click', onSkip);
+      submitBtn.removeEventListener('click', onSubmit);
+      input.removeEventListener('keydown', onKey);
+      overlay.removeEventListener('click', onBg);
+    }
+    function onSkip() { cleanup(); resolve(''); }
+    function onSubmit() { cleanup(); resolve(input.value.trim()); }
+    function onKey(e) {
+      if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); onSubmit(); }
+      if (e.key === 'Escape') { onSkip(); }
+    }
+    function onBg(e) { if (e.target === overlay) onSkip(); }
+
+    skipBtn.addEventListener('click', onSkip);
+    submitBtn.addEventListener('click', onSubmit);
+    input.addEventListener('keydown', onKey);
+    overlay.addEventListener('click', onBg);
+  });
+}
+
+// ─── Processing Toast (non-blocking indicator) ──
+function processingToast(msg) {
+  const el = document.createElement('div');
+  el.className = 'toast processing';
+  el.innerHTML = `<div class="spinner"></div><span>${msg}</span>`;
+  document.getElementById('toast-container').appendChild(el);
+  return {
+    update(newMsg) { el.querySelector('span').textContent = newMsg; },
+    done(finalMsg, type = 'success') {
+      el.remove();
+      if (finalMsg) toast(finalMsg, type);
+    }
+  };
+}
+
+// Helper: detect if text looks like a URL
+function looksLikeUrl(text) {
+  return /^https?:\/\/\S+$/i.test(text.trim()) || /^www\.\S+$/i.test(text.trim());
+}
+
+// ─── Graph Data ───────────────────────────
+async function loadGraph() {
+  // Flush any pending position saves before reloading
+  if (_positionsDirty) {
+    clearTimeout(positionSaveTimeout);
+    const positions = _getPositionData();
+    if (positions.length) {
+      await api('/api/positions', { method: 'POST', body: JSON.stringify(positions) });
+    }
+    _positionsDirty = false;
+  }
+  setLoading(true);
+  const data = await api('/api/graph');
+  setLoading(false);
+  if (!data) return;
+
+  const oldNodeMap = nodeMap;  // Preserve positions from previous state
+  nodeMap = {};
+  nodes = data.nodes.map(n => {
+    const existing = oldNodeMap[n.id];
+    const node = {
+      ...n,
+      x: n.x ?? (existing?.x) ?? (Math.random() - 0.5) * 400,
+      y: n.y ?? (existing?.y) ?? (Math.random() - 0.5) * 400,
+      z: existing?.z ?? (Math.random() - 0.5) * 200,
+      vx: existing?.vx || 0,
+      vy: existing?.vy || 0,
+      vz: existing?.vz || 0,
+      radius: calcRadius(n),
+      color: TYPE_COLORS[n.type] || TYPE_COLORS.note,
+      _pinned: n.pinned || (existing?._pinned ?? false)  // preserve drag-pin state
+    };
+    preloadThumb(node);
+    nodeMap[n.id] = node;
+    return node;
+  });
+
+  edges = data.edges.map(e => ({
+    ...e,
+    sourceNode: nodeMap[e.source],
+    targetNode: nodeMap[e.target]
+  })).filter(e => e.sourceNode && e.targetNode);
+
+  // Store cluster data from server
+  clusters = data.clusters || [];
+
+  // Update stats
+  document.getElementById('stat-nodes').textContent = nodes.length;
+  document.getElementById('stat-edges').textContent = edges.length;
+  const inbox = nodes.filter(n => n.status === 'inbox').length;
+  document.getElementById('stat-inbox').textContent = inbox;
+
+  // Apply layout mode
+  if (layoutMode === 'map') {
+    // Map mode: pin all nodes, no simulation
+    for (const n of nodes) n._pinned = true;
+    simAlpha = 0;
+  } else {
+    // Semantic mode: only kick simulation for new/unpositioned nodes
+    const hasNew = nodes.some(n => n.x === 0 && n.y === 0 && !n.pinned);
+    simAlpha = hasNew ? 0.5 : Math.max(simAlpha, 0.05);
+  }
+}
+
+// Thumbnail image cache — keyed by URL, persists across graph reloads
+const _thumbCache = new Map();
+
+function getThumbUrl(n) {
+  // Image nodes: use uploaded image
+  if (n.image) return `/uploads/${n.image}`;
+  // URL nodes: use locally-saved thumbnail, fallback to external og:image
+  if (n.meta?.thumbnail) return `/uploads/${n.meta.thumbnail}`;
+  if (n.meta?.image) return n.meta.image;
+  return null;
+}
+
+function preloadThumb(node) {
+  const url = getThumbUrl(node);
+  if (!url) { node._thumb = null; return; }
+  if (_thumbCache.has(url)) { node._thumb = _thumbCache.get(url); return; }
+  const img = new Image();
+  img.crossOrigin = 'anonymous';
+  img.src = url;
+  _thumbCache.set(url, img);
+  node._thumb = img;
+}
+
+function calcRadius(n) {
+  let r = NODE_BASE_RADIUS;
+  // Temperature boost
+  r *= 0.7 + (n.temperature || 1) * 0.4;
+  // Starred boost
+  if (n.starred) r *= 1.15;
+  // Daily nodes smaller
+  if (n.type === 'daily') r *= 0.7;
+  // Thumbnail nodes slightly larger
+  if (getThumbUrl(n)) r *= 1.3;
+  return Math.max(NODE_MIN_RADIUS, Math.min(NODE_MAX_RADIUS * 1.3, r));
+}
+
+// ─── Physics Simulation ──────────────────
+function simulate() {
+  if (!simRunning || simAlpha < 0.001 || layoutMode === 'map') return;
+  simAlpha *= SIM_DECAY;
+
+  const alpha = simAlpha;
+
+  const use3D = typeof is3D !== 'undefined' && is3D;
+
+  // Repulsion (all pairs)
+  for (let i = 0; i < nodes.length; i++) {
+    for (let j = i + 1; j < nodes.length; j++) {
+      const a = nodes[i], b = nodes[j];
+      let dx = b.x - a.x, dy = b.y - a.y;
+      let dz = use3D ? (b.z - a.z) : 0;
+      let dist = Math.sqrt(dx * dx + dy * dy + dz * dz) || 1;
+      let force = (REPULSION * alpha) / (dist * dist);
+      let fx = (dx / dist) * force;
+      let fy = (dy / dist) * force;
+      let fz = use3D ? (dz / dist) * force : 0;
+      if (!a._pinned) { a.vx -= fx; a.vy -= fy; if (use3D) a.vz -= fz; }
+      if (!b._pinned) { b.vx += fx; b.vy += fy; if (use3D) b.vz += fz; }
+    }
+  }
+
+  // Edge attraction
+  for (const e of edges) {
+    const a = e.sourceNode, b = e.targetNode;
+    if (!a || !b) continue;
+    let dx = b.x - a.x, dy = b.y - a.y;
+    let dz = use3D ? (b.z - a.z) : 0;
+    let dist = Math.sqrt(dx * dx + dy * dy + dz * dz) || 1;
+    let force = (dist - EDGE_LENGTH) * ATTRACTION * alpha * (e.weight || 1);
+    let fx = (dx / dist) * force;
+    let fy = (dy / dist) * force;
+    let fz = use3D ? (dz / dist) * force : 0;
+    if (!a._pinned) { a.vx += fx; a.vy += fy; if (use3D) a.vz += fz; }
+    if (!b._pinned) { b.vx -= fx; b.vy -= fy; if (use3D) b.vz -= fz; }
+  }
+
+  // Center gravity (stronger for hot nodes)
+  for (const n of nodes) {
+    if (n._pinned) continue;
+    const grav = CENTER_GRAVITY * alpha * (n.temperature || 1);
+    n.vx -= n.x * grav;
+    n.vy -= n.y * grav;
+    if (use3D) n.vz -= n.z * grav;
+  }
+
+  // Apply velocities
+  for (const n of nodes) {
+    if (n._pinned) continue;
+    n.vx *= DAMPING;
+    n.vy *= DAMPING;
+    n.x += n.vx;
+    n.y += n.vy;
+    if (use3D) {
+      n.vz *= DAMPING;
+      n.z += n.vz;
+    }
+  }
+}
+
+// ─── Rendering ────────────────────────────
+function resize() {
+  canvas.width = window.innerWidth * devicePixelRatio;
+  canvas.height = window.innerHeight * devicePixelRatio;
+  canvas.style.width = window.innerWidth + 'px';
+  canvas.style.height = window.innerHeight + 'px';
+  ctx.setTransform(devicePixelRatio, 0, 0, devicePixelRatio, 0, 0);
+  // 3D disabled — resize handler commented out
+  // if (typeof threeRenderer !== 'undefined' && threeRenderer) {
+  //   threeRenderer.setSize(window.innerWidth, window.innerHeight);
+  //   threeCamera.aspect = window.innerWidth / window.innerHeight;
+  //   threeCamera.updateProjectionMatrix();
+  // }
+}
+
+function worldToScreen(wx, wy) {
+  return {
+    x: (wx - cam.x) * cam.zoom + window.innerWidth / 2,
+    y: (wy - cam.y) * cam.zoom + window.innerHeight / 2
+  };
+}
+
+function screenToWorld(sx, sy) {
+  return {
+    x: (sx - window.innerWidth / 2) / cam.zoom + cam.x,
+    y: (sy - window.innerHeight / 2) / cam.zoom + cam.y
+  };
+}
+
+function draw() {
+  // Smooth camera
+  cam.x += (targetCam.x - cam.x) * 0.1;
+  cam.y += (targetCam.y - cam.y) * 0.1;
+  cam.zoom += (targetCam.zoom - cam.zoom) * 0.1;
+
+  ctx.clearRect(0, 0, window.innerWidth, window.innerHeight);
+
+  // Background grid
+  drawGrid();
+
+  // Draw cluster boundaries
+  const clusterColors = ['#a78bfa', '#38bdf8', '#4ade80', '#fbbf24', '#f472b6', '#fb923c', '#e879f9', '#6ee7b7'];
+  for (let ci = 0; ci < clusters.length; ci++) {
+    const cluster = clusters[ci];
+    const memberNodes = cluster.members.map(id => nodeMap[id]).filter(Boolean);
+    if (memberNodes.length < 3) continue;
+
+    // If collapsed, skip drawing boundary (the representative node handles it)
+    if (collapsedClusters.has(cluster.id)) continue;
+
+    // Compute centroid
+    let cx = 0, cy = 0;
+    for (const mn of memberNodes) { cx += mn.x; cy += mn.y; }
+    cx /= memberNodes.length;
+    cy /= memberNodes.length;
+
+    // Compute bounding radius
+    let maxDist = 0;
+    for (const mn of memberNodes) {
+      const dx = mn.x - cx, dy = mn.y - cy;
+      const d = Math.sqrt(dx * dx + dy * dy) + mn.radius;
+      if (d > maxDist) maxDist = d;
+    }
+
+    const sc = worldToScreen(cx, cy);
+    const sr = (maxDist + 30) * cam.zoom;  // padding
+
+    // Draw translucent boundary circle
+    const cColor = clusterColors[ci % clusterColors.length];
+    ctx.beginPath();
+    ctx.arc(sc.x, sc.y, sr, 0, Math.PI * 2);
+    ctx.fillStyle = cColor + '08';  // very translucent fill
+    ctx.fill();
+    ctx.strokeStyle = cColor + '25';
+    ctx.lineWidth = 1;
+    ctx.setLineDash([4, 4]);
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    // Cluster size label
+    if (cam.zoom > 0.3) {
+      ctx.font = `500 ${Math.max(9, 11 * cam.zoom)}px 'DM Sans', sans-serif`;
+      ctx.fillStyle = cColor + '60';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(`${cluster.size} nodes`, sc.x, sc.y - sr - 8 * cam.zoom);
+    }
+  }
+
+  // Determine which nodes are hidden due to collapsed clusters
+  const hiddenNodes = new Set();
+  const clusterRepresentatives = {};  // cluster.id -> representative node
+  for (const cluster of clusters) {
+    if (!collapsedClusters.has(cluster.id)) continue;
+    const memberNodes = cluster.members.map(id => nodeMap[id]).filter(Boolean);
+    if (memberNodes.length === 0) continue;
+    // Pick the node with highest temperature as representative
+    let rep = memberNodes[0];
+    for (const mn of memberNodes) {
+      if ((mn.temperature || 0) > (rep.temperature || 0)) rep = mn;
+    }
+    clusterRepresentatives[cluster.id] = rep;
+    for (const mn of memberNodes) {
+      if (mn.id !== rep.id) hiddenNodes.add(mn.id);
+    }
+  }
+
+  // Draw edges
+  for (const e of edges) {
+    // Skip edges where both nodes are hidden
+    if (hiddenNodes.has(e.source) && hiddenNodes.has(e.target)) continue;
+    // Skip edges where one end is hidden (the collapsed cluster hides internal edges)
+    if (hiddenNodes.has(e.source) || hiddenNodes.has(e.target)) continue;
+
+    const a = worldToScreen(e.sourceNode.x, e.sourceNode.y);
+    const b = worldToScreen(e.targetNode.x, e.targetNode.y);
+
+    const isHighlighted = selectedNode &&
+      (e.source === selectedNode.id || e.target === selectedNode.id);
+
+    ctx.beginPath();
+    ctx.moveTo(a.x, a.y);
+    ctx.lineTo(b.x, b.y);
+    ctx.strokeStyle = isHighlighted
+      ? `rgba(110, 231, 183, ${0.3 + (e.weight || 0.5) * 0.4})`
+      : `rgba(100, 100, 140, ${0.08 + (e.weight || 0.5) * 0.12})`;
+    ctx.lineWidth = isHighlighted ? 1.5 : 0.8;
+    ctx.stroke();
+
+    // Edge label rendering (only for rich labels, not 'related' or 'daily')
+    if (e.label && e.label !== 'related' && e.label !== 'daily' && cam.zoom > 0.6) {
+      const mx = (a.x + b.x) / 2;
+      const my = (a.y + b.y) / 2;
+      const displayLabel = e.label.replace(/_/g, ' ');
+      ctx.font = `400 ${Math.max(8, 9 * cam.zoom)}px 'DM Sans', sans-serif`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillStyle = isHighlighted ? 'rgba(110, 231, 183, 0.7)' : 'rgba(140, 140, 170, 0.4)';
+      ctx.fillText(displayLabel, mx, my - 4 * cam.zoom);
+    }
+  }
+
+  // Draw nodes
+  const now = Date.now();
+  for (const n of nodes) {
+    // Skip nodes hidden by collapsed clusters
+    if (hiddenNodes.has(n.id)) continue;
+    const s = worldToScreen(n.x, n.y);
+    const r = n.radius * cam.zoom;
+
+    // Skip if offscreen
+    if (s.x < -50 || s.x > window.innerWidth + 50 ||
+        s.y < -50 || s.y > window.innerHeight + 50) continue;
+
+    const isSelected = selectedNode && selectedNode.id === n.id;
+    const isHovered = hoveredNode && hoveredNode.id === n.id;
+    const isInbox = n.status === 'inbox';
+    const temp = n.temperature || 1;
+
+    // Glow for hot nodes
+    if (temp > 1.2 || isSelected || isHovered) {
+      const glowR = r * (isSelected ? 2.5 : isHovered ? 2 : 1.5);
+      const grd = ctx.createRadialGradient(s.x, s.y, r * 0.5, s.x, s.y, glowR);
+      grd.addColorStop(0, n.color + '30');
+      grd.addColorStop(1, 'transparent');
+      ctx.beginPath();
+      ctx.arc(s.x, s.y, glowR, 0, Math.PI * 2);
+      ctx.fillStyle = grd;
+      ctx.fill();
+    }
+
+    // Inbox pulse ring
+    if (isInbox) {
+      const pulsePhase = (Math.sin(now * 0.003 + n.x) + 1) * 0.5;
+      const pulseR = r * (1.3 + pulsePhase * 0.5);
+      ctx.beginPath();
+      ctx.arc(s.x, s.y, pulseR, 0, Math.PI * 2);
+      ctx.strokeStyle = n.color + Math.floor(30 + pulsePhase * 40).toString(16);
+      ctx.lineWidth = 1.5;
+      ctx.setLineDash([3, 3]);
+      ctx.stroke();
+      ctx.setLineDash([]);
+    }
+
+    // Node body
+    const hasThumb = n._thumb && n._thumb.complete && n._thumb.naturalWidth > 0;
+    ctx.beginPath();
+    if (hasThumb || n.type === 'image') {
+      // Rounded square for visual nodes
+      roundRect(ctx, s.x - r, s.y - r, r * 2, r * 2, r * 0.3);
+    } else {
+      ctx.arc(s.x, s.y, r, 0, Math.PI * 2);
+    }
+
+    if (hasThumb) {
+      // Draw thumbnail image clipped to shape
+      ctx.save();
+      ctx.clip();
+      // Cover-fit: center-crop the image to fill the node
+      const iw = n._thumb.naturalWidth, ih = n._thumb.naturalHeight;
+      const scale = Math.max((r * 2) / iw, (r * 2) / ih);
+      const dw = iw * scale, dh = ih * scale;
+      ctx.drawImage(n._thumb, s.x - dw / 2, s.y - dh / 2, dw, dh);
+      // Dim overlay based on temperature (colder = darker)
+      const dimAlpha = Math.max(0, 0.4 - temp * 0.25);
+      if (dimAlpha > 0.02) {
+        ctx.fillStyle = `rgba(10,10,15,${dimAlpha})`;
+        ctx.fill();
+      }
+      ctx.restore();
+      // Redraw path for border stroke
+      ctx.beginPath();
+      roundRect(ctx, s.x - r, s.y - r, r * 2, r * 2, r * 0.3);
+    } else {
+      // Fill with temperature gradient
+      const alpha = 0.15 + temp * 0.15;
+      ctx.fillStyle = n.color + Math.floor(alpha * 255).toString(16).padStart(2, '0');
+      ctx.fill();
+    }
+
+    // Border
+    ctx.strokeStyle = isSelected ? '#fff' : isHovered ? n.color : n.color + '60';
+    ctx.lineWidth = isSelected ? 2 : isHovered ? 1.5 : 0.8;
+    ctx.stroke();
+
+    // Star indicator
+    if (n.starred) {
+      ctx.font = `${Math.max(8, r * 0.6)}px sans-serif`;
+      ctx.fillStyle = '#fbbf24';
+      ctx.textAlign = 'center';
+      ctx.fillText('★', s.x + r * 0.7, s.y - r * 0.5);
+    }
+
+    // Cluster collapse badge (shown on representative node of collapsed cluster)
+    for (const cid of collapsedClusters) {
+      const rep = clusterRepresentatives[cid];
+      if (rep && rep.id === n.id) {
+        const cluster = clusters.find(c => c.id === cid);
+        if (cluster) {
+          const badgeR = Math.max(7, r * 0.4);
+          const bx = s.x - r * 0.7, by = s.y - r * 0.7;
+          ctx.beginPath();
+          ctx.arc(bx, by, badgeR, 0, Math.PI * 2);
+          ctx.fillStyle = '#6ee7b7';
+          ctx.fill();
+          ctx.font = `700 ${Math.max(7, badgeR * 1.1)}px 'DM Sans', sans-serif`;
+          ctx.fillStyle = '#0a0a0f';
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillText(String(cluster.size), bx, by);
+        }
+        break;
+      }
+    }
+
+    // Label
+    if (cam.zoom > 0.35 && n.label) {
+      const fontSize = Math.max(9, Math.min(13, r * 0.65));
+      ctx.font = `500 ${fontSize}px 'DM Sans', sans-serif`;
+      ctx.fillStyle = isSelected || isHovered ? '#fff' : `rgba(224,223,232,${0.5 + temp * 0.3})`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+
+      // Truncate label
+      let label = n.label || '';
+      if (label.length > 24) label = label.slice(0, 22) + '…';
+      ctx.fillText(label, s.x, s.y + r + fontSize + 2);
+    }
+
+    // Type icon (small dot)
+    ctx.beginPath();
+    ctx.arc(s.x, s.y, r * 0.2, 0, Math.PI * 2);
+    ctx.fillStyle = n.color;
+    ctx.fill();
+  }
+}
+
+function roundRect(ctx, x, y, w, h, r) {
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.lineTo(x + w - r, y);
+  ctx.quadraticCurveTo(x + w, y, x + w, y + r);
+  ctx.lineTo(x + w, y + h - r);
+  ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+  ctx.lineTo(x + r, y + h);
+  ctx.quadraticCurveTo(x, y + h, x, y + h - r);
+  ctx.lineTo(x, y + r);
+  ctx.quadraticCurveTo(x, y, x + r, y);
+  ctx.closePath();
+}
+
+function drawGrid() {
+  const step = 60 * cam.zoom;
+  if (step < 10) return;
+
+  const ox = (window.innerWidth / 2 - cam.x * cam.zoom) % step;
+  const oy = (window.innerHeight / 2 - cam.y * cam.zoom) % step;
+
+  ctx.strokeStyle = 'rgba(40, 40, 60, 0.3)';
+  ctx.lineWidth = 0.5;
+
+  for (let x = ox; x < window.innerWidth; x += step) {
+    ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, window.innerHeight); ctx.stroke();
+  }
+  for (let y = oy; y < window.innerHeight; y += step) {
+    ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(window.innerWidth, y); ctx.stroke();
+  }
+}
+
+// ─── Hit Testing ──────────────────────────
+function hitTest(sx, sy) {
+  const w = screenToWorld(sx, sy);
+  const padding = 5 / cam.zoom;  // 5 screen pixels of extra hit area
+  for (let i = nodes.length - 1; i >= 0; i--) {
+    const n = nodes[i];
+    const dx = w.x - n.x, dy = w.y - n.y;
+    const dist = Math.sqrt(dx * dx + dy * dy);
+    if (dist < n.radius + padding) return n;
+  }
+  return null;
+}
+
+// ─── Input Handling ───────────────────────
+let didDrag = false;  // Track whether a drag occurred (prevent click after drag)
+
+canvas.addEventListener('mousedown', e => {
+  didDrag = false;
+  const hit = hitTest(e.clientX, e.clientY);
+  if (hit) {
+    dragNode = hit;
+    dragNode._pinned = true;
+    canvas.classList.add('dragging');
+  } else {
+    isPanning = true;
+    panStart = { x: e.clientX, y: e.clientY };
+    canvas.classList.add('dragging');
+  }
+});
+
+canvas.addEventListener('mousemove', e => {
+  lastMouse = { x: e.clientX, y: e.clientY };
+
+  if (dragNode) {
+    didDrag = true;
+    const w = screenToWorld(e.clientX, e.clientY);
+    dragNode.x = w.x;
+    dragNode.y = w.y;
+    if (layoutMode === 'semantic') simAlpha = Math.max(simAlpha, 0.1);
+    return;
+  }
+
+  if (isPanning) {
+    didDrag = true;
+    const dx = e.clientX - panStart.x;
+    const dy = e.clientY - panStart.y;
+    targetCam.x -= dx / cam.zoom;
+    targetCam.y -= dy / cam.zoom;
+    panStart = { x: e.clientX, y: e.clientY };
+    return;
+  }
+
+  const hit = hitTest(e.clientX, e.clientY);
+  if (hit !== hoveredNode) {
+    hoveredNode = hit;
+    canvas.classList.toggle('node-hover', !!hit);
+  }
+});
+
+canvas.addEventListener('mouseup', e => {
+  if (dragNode) {
+    saveNodePosition();
+    dragNode = null;
+  }
+  if (!didDrag) {
+    // Only open detail on clean click (no drag/pan)
+    const hit = hitTest(e.clientX, e.clientY);
+    if (hit) openDetail(hit);
+    else closeSearch();
+  }
+  isPanning = false;
+  didDrag = false;
+  canvas.classList.remove('dragging');
+});
+
+canvas.addEventListener('dblclick', e => {
+  const hit = hitTest(e.clientX, e.clientY);
+  if (hit) {
+    // Focus camera on node
+    targetCam.x = hit.x;
+    targetCam.y = hit.y;
+    targetCam.zoom = 1.5;
+  } else {
+    // Check if double-click is near a cluster boundary — toggle collapse
+    const w = screenToWorld(e.clientX, e.clientY);
+    for (const cluster of clusters) {
+      const memberNodes = cluster.members.map(id => nodeMap[id]).filter(Boolean);
+      if (memberNodes.length < 3) continue;
+      let cx = 0, cy = 0;
+      for (const mn of memberNodes) { cx += mn.x; cy += mn.y; }
+      cx /= memberNodes.length;
+      cy /= memberNodes.length;
+      let maxDist = 0;
+      for (const mn of memberNodes) {
+        const dx = mn.x - cx, dy = mn.y - cy;
+        const d = Math.sqrt(dx * dx + dy * dy) + mn.radius;
+        if (d > maxDist) maxDist = d;
+      }
+      const boundaryR = maxDist + 30;
+      const dxc = w.x - cx, dyc = w.y - cy;
+      const distToCenter = Math.sqrt(dxc * dxc + dyc * dyc);
+      // Click within the boundary ring area (between 70% and 110% of radius)
+      if (distToCenter < boundaryR * 1.1 && distToCenter > boundaryR * 0.7) {
+        if (collapsedClusters.has(cluster.id)) {
+          collapsedClusters.delete(cluster.id);
+        } else {
+          collapsedClusters.add(cluster.id);
+        }
+        simAlpha = Math.max(simAlpha, 0.3);
+        break;
+      }
+    }
+  }
+});
+
+canvas.addEventListener('wheel', e => {
+  e.preventDefault();
+  const zoomFactor = e.deltaY > 0 ? 0.92 : 1.08;
+  targetCam.zoom = Math.max(0.15, Math.min(4, targetCam.zoom * zoomFactor));
+
+  // Zoom toward mouse
+  const w = screenToWorld(e.clientX, e.clientY);
+  targetCam.x += (w.x - targetCam.x) * (1 - 1 / zoomFactor) * 0.3;
+  targetCam.y += (w.y - targetCam.y) * (1 - 1 / zoomFactor) * 0.3;
+}, { passive: false });
+
+// Touch support
+let touches = {};
+let touchDragged = false;
+canvas.addEventListener('touchstart', e => {
+  e.preventDefault();
+  touchDragged = false;
+  if (e.touches.length === 1) {
+    const t = e.touches[0];
+    const hit = hitTest(t.clientX, t.clientY);
+    if (hit) {
+      dragNode = hit;
+      dragNode._pinned = true;
+    } else {
+      isPanning = true;
+      panStart = { x: t.clientX, y: t.clientY };
+    }
+  }
+}, { passive: false });
+
+canvas.addEventListener('touchmove', e => {
+  e.preventDefault();
+  touchDragged = true;
+  if (e.touches.length === 1) {
+    const t = e.touches[0];
+    if (dragNode) {
+      const w = screenToWorld(t.clientX, t.clientY);
+      dragNode.x = w.x; dragNode.y = w.y;
+    } else if (isPanning) {
+      const dx = t.clientX - panStart.x;
+      const dy = t.clientY - panStart.y;
+      targetCam.x -= dx / cam.zoom;
+      targetCam.y -= dy / cam.zoom;
+      panStart = { x: t.clientX, y: t.clientY };
+    }
+  } else if (e.touches.length === 2) {
+    // Pinch zoom
+    const d = Math.hypot(
+      e.touches[0].clientX - e.touches[1].clientX,
+      e.touches[0].clientY - e.touches[1].clientY
+    );
+    if (touches.pinchDist) {
+      const scale = d / touches.pinchDist;
+      targetCam.zoom = Math.max(0.15, Math.min(4, targetCam.zoom * scale));
+    }
+    touches.pinchDist = d;
+  }
+}, { passive: false });
+
+canvas.addEventListener('touchend', e => {
+  if (dragNode) {
+    saveNodePosition();
+    dragNode = null;
+  }
+  // Tap to select (only if no drag occurred)
+  if (!touchDragged && e.changedTouches.length === 1) {
+    const t = e.changedTouches[0];
+    const hit = hitTest(t.clientX, t.clientY);
+    if (hit) openDetail(hit);
+  }
+  isPanning = false;
+  touchDragged = false;
+  touches = {};
+});
+
+// ─── Keyboard ─────────────────────────────
+document.addEventListener('keydown', e => {
+  // Command palette
+  if (e.key === '/' && document.activeElement !== document.getElementById('main-input')) {
+    e.preventDefault();
+    openCmdPalette();
+    return;
+  }
+
+  // Escape
+  if (e.key === 'Escape') {
+    closeDetail();
+    closeCmdPalette();
+    closeSearch();
+    return;
+  }
+
+  // Focus input
+  if (e.key === 'Tab' && !e.shiftKey) {
+    e.preventDefault();
+    document.getElementById('main-input').focus();
+  }
+});
+
+// ─── Main Input ───────────────────────────
+const mainInput = document.getElementById('main-input');
+
+// Fire-and-forget NL request (non-blocking for adds)
+function fireNLRequest(text, note) {
+  // Combine note with text for URL inputs
+  const payload = note ? `${text}\n\n[Note]: ${note}` : text;
+  const pt = processingToast(`Processing: ${text.slice(0, 50)}${text.length > 50 ? '…' : ''}`);
+  api('/api/nl', {
+    method: 'POST',
+    body: JSON.stringify({ text: payload, channel: 'web' })
+  }).then(async data => {
+    if (!data) { pt.done('Processing failed', 'error'); return; }
+    if (data.action === 'add') {
+      pt.done(data.response || `Added: ${data.node?.label}`);
+      await loadGraph();
+      if (data.node?.id && nodeMap[data.node.id]) {
+        const newNode = nodeMap[data.node.id];
+        targetCam.x = newNode.x;
+        targetCam.y = newNode.y;
+        simAlpha = 1.0;
+      }
+    } else if (data.action === 'digest') {
+      pt.done(data.response);
+    } else {
+      pt.done(data.response || 'Done');
+    }
+  }).catch(() => pt.done('Processing failed', 'error'));
+}
+
+mainInput.addEventListener('keydown', async e => {
+  if (e.key === 'Enter' && !e.shiftKey) {
+    e.preventDefault();
+    const text = mainInput.value.trim();
+    if (!text) return;
+
+    if (text === '/') {
+      mainInput.value = '';
+      openCmdPalette();
+      return;
+    }
+
+    if (text.toLowerCase() === 'process' || text.toLowerCase() === 'process inbox') {
+      mainInput.value = '';
+      enterProcessMode();
+      return;
+    }
+
+    mainInput.value = '';
+
+    // Search queries still block (user needs results immediately)
+    const isSearch = /^(find|search|show|where|what)\b/i.test(text);
+    if (isSearch) {
+      setLoading(true);
+      const data = await api('/api/nl', {
+        method: 'POST',
+        body: JSON.stringify({ text, channel: 'web' })
+      });
+      setLoading(false);
+      if (!data) return;
+      if (data.action === 'search') {
+        showSearchResults(data.results, data.response);
+      } else if (data.action === 'add') {
+        toast(data.response || `Added: ${data.node?.label}`);
+        await loadGraph();
+      } else {
+        toast(data.response || 'Done');
+      }
+      return;
+    }
+
+    // Everything else (text, URLs, commands): non-blocking through NL
+    fireNLRequest(text, '');
+  }
+
+  if (e.key === 'Escape') {
+    mainInput.blur();
+    closeSearch();
+  }
+});
+
+// Send button click
+document.getElementById('send-btn').addEventListener('click', () => {
+  mainInput.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter' }));
+});
+
+// Hint chips
+document.querySelectorAll('.hint-chip').forEach(chip => {
+  chip.addEventListener('click', () => {
+    const hint = chip.dataset.hint;
+    if (hint === '__process__') {
+      enterProcessMode();
+      return;
+    }
+    if (hint === '/') {
+      openCmdPalette();
+    } else {
+      mainInput.value = hint;
+      mainInput.focus();
+      mainInput.setSelectionRange(hint.length, hint.length);
+    }
+  });
+});
+
+// ─── Search Results ───────────────────────
+function showSearchResults(results, responseText) {
+  const overlay = document.getElementById('search-overlay');
+  if (!results || results.length === 0) {
+    overlay.innerHTML = `<div style="padding:20px;text-align:center;color:var(--text-muted)">${responseText || 'No results found'}</div>`;
+    overlay.classList.add('open');
+    return;
+  }
+
+  let html = responseText ? `<div style="padding:10px 14px;font-size:12px;color:var(--text-dim)">${responseText}</div>` : '';
+  for (const r of results) {
+    const color = TYPE_COLORS[r.node_type] || TYPE_COLORS.note;
+    html += `
+      <div class="search-result" data-id="${r.id}">
+        <div class="conn-dot" style="background:${color}"></div>
+        <div>
+          <div class="search-result-label">${r.label || r.content?.slice(0, 50)}</div>
+          <div class="search-result-snippet">${r.content?.slice(0, 100) || ''}</div>
+        </div>
+        <div class="search-result-score">${r.score ? (r.score * 100).toFixed(0) + '%' : ''}</div>
+      </div>
+    `;
+  }
+  overlay.innerHTML = html;
+  overlay.classList.add('open');
+
+  overlay.querySelectorAll('.search-result').forEach(el => {
+    el.addEventListener('click', () => {
+      const id = el.dataset.id;
+      if (nodeMap[id]) {
+        targetCam.x = nodeMap[id].x;
+        targetCam.y = nodeMap[id].y;
+        targetCam.zoom = 1.2;
+        selectedNode = nodeMap[id];
+        openDetail(nodeMap[id]);
+      }
+      closeSearch();
+    });
+  });
+}
+
+function closeSearch() {
+  document.getElementById('search-overlay').classList.remove('open');
+}
+
+// ─── Detail Panel ─────────────────────────
+async function openDetail(node) {
+  selectedNode = node;
+  setLoading(true);
+  const data = await api(`/api/node/${node.id}`);
+  setLoading(false);
+  if (!data) return;
+
+  const panel = document.getElementById('detail-panel');
+  const typeColor = TYPE_COLORS[data.type] || TYPE_COLORS.note;
+
+  document.getElementById('detail-type-badge').textContent = data.type;
+  document.getElementById('detail-type-badge').style.background = typeColor + '20';
+  document.getElementById('detail-type-badge').style.color = typeColor;
+  document.getElementById('detail-label').textContent = data.label;
+  const metaParts = [];
+  metaParts.push(`<span class="meta-item"><span class="meta-label">Created</span><span class="meta-value">${new Date(data.created).toLocaleDateString()}</span></span>`);
+  if (data.due_date) metaParts.push(`<span class="meta-item"><span class="meta-label">Due</span><span class="meta-value" style="color:var(--warm)">${data.due_date}</span></span>`);
+  metaParts.push(`<span class="meta-item"><span class="meta-label">Visits</span><span class="meta-value">${data.visits}</span></span>`);
+  metaParts.push(`<span class="meta-item"><span class="meta-label">Temp</span><span class="meta-value">${data.temperature?.toFixed(2)}</span></span>`);
+  metaParts.push(`<span class="meta-item"><span class="meta-label">Status</span><span class="meta-value">${data.status}</span></span>`);
+  document.getElementById('detail-meta').innerHTML = metaParts.join('');
+  document.getElementById('detail-content').textContent = data.content;
+
+  // URL
+  const urlEl = document.getElementById('detail-url');
+  if (data.url) {
+    urlEl.href = data.url;
+    urlEl.textContent = data.url;
+    urlEl.style.display = 'block';
+  } else {
+    urlEl.style.display = 'none';
+  }
+
+  // Image
+  const imgEl = document.getElementById('detail-image');
+  if (data.image) {
+    imgEl.src = `/uploads/${data.image}`;
+    imgEl.style.display = 'block';
+  } else {
+    imgEl.style.display = 'none';
+  }
+
+  // Archived page link
+  const archiveEl = document.getElementById('detail-archive');
+  if (data.meta?.html_archive) {
+    archiveEl.href = `/uploads/${data.meta.html_archive}`;
+    archiveEl.textContent = '\u{1F4C4} View Archived Page';
+    archiveEl.style.display = 'block';
+  } else {
+    archiveEl.style.display = 'none';
+  }
+
+  // PDF download
+  const pdfEl = document.getElementById('detail-pdf');
+  if (data.meta?.pdf_file) {
+    pdfEl.href = `/uploads/${data.meta.pdf_file}`;
+    pdfEl.textContent = '\u{1F4E5} Download PDF';
+    pdfEl.download = data.label ? `${data.label}.pdf` : data.meta.pdf_file;
+    pdfEl.style.display = 'inline-block';
+  } else {
+    pdfEl.style.display = 'none';
+  }
+
+  // User notes
+  const notesEl = document.getElementById('detail-user-notes');
+  if (data.meta?.user_notes) {
+    notesEl.textContent = data.meta.user_notes;
+    notesEl.style.display = 'block';
+  } else {
+    notesEl.style.display = 'none';
+  }
+
+  // Image description
+  const imgDescEl = document.getElementById('detail-img-description');
+  if (data.meta?.image_description) {
+    imgDescEl.textContent = data.meta.image_description;
+    imgDescEl.style.display = 'block';
+  } else {
+    imgDescEl.style.display = 'none';
+  }
+
+  // Connections
+  const connList = document.getElementById('conn-list');
+  if (data.connected && data.connected.length) {
+    connList.innerHTML = data.connected.map(c => {
+      const cc = TYPE_COLORS[c.type] || TYPE_COLORS.note;
+      return `<div class="conn-item" data-id="${c.id}">
+        <div class="conn-dot" style="background:${cc}"></div>
+        <span>${c.label}</span>
+        <span class="conn-label">${(c.edge_label || 'related').replace(/_/g, ' ')}</span>
+      </div>`;
+    }).join('');
+
+    connList.querySelectorAll('.conn-item').forEach(el => {
+      el.addEventListener('click', () => {
+        const id = el.dataset.id;
+        if (nodeMap[id]) {
+          targetCam.x = nodeMap[id].x;
+          targetCam.y = nodeMap[id].y;
+          openDetail(nodeMap[id]);
+        }
+      });
+    });
+  } else {
+    connList.innerHTML = '<div style="color:var(--text-muted);font-size:12px;padding:4px">No connections yet</div>';
+  }
+
+  // Similar images (image nodes only)
+  const simEl = document.getElementById('detail-similar-images');
+  if (data.type === 'image') {
+    const simData = await api(`/api/similar-images/${data.id}?limit=6`);
+    if (simData?.results?.length) {
+      simEl.innerHTML = `<h4>Similar Images</h4>
+        <div class="sim-img-grid">${simData.results.map(r => `
+          <div class="sim-img-item" data-id="${r.id}">
+            <img src="/uploads/${r.image}" />
+            <div class="sim-img-score">${(r.score * 100).toFixed(0)}%</div>
+          </div>`).join('')}
+        </div>`;
+      simEl.querySelectorAll('.sim-img-item').forEach(el => {
+        el.addEventListener('click', () => {
+          const id = el.dataset.id;
+          if (nodeMap[id]) {
+            targetCam.x = nodeMap[id].x;
+            targetCam.y = nodeMap[id].y;
+            openDetail(nodeMap[id]);
+          }
+        });
+      });
+    } else {
+      simEl.innerHTML = '';
+    }
+  } else {
+    simEl.innerHTML = '';
+  }
+
+  // Store current node data for actions
+  panel._nodeData = data;
+  panel.classList.add('open');
+}
+
+function closeDetail() {
+  document.getElementById('detail-panel').classList.remove('open');
+  selectedNode = null;
+}
+
+document.getElementById('detail-close').addEventListener('click', closeDetail);
+
+// Detail actions
+document.querySelectorAll('#detail-actions .action-btn').forEach(btn => {
+  btn.addEventListener('click', async () => {
+    const panel = document.getElementById('detail-panel');
+    const data = panel._nodeData;
+    if (!data) return;
+
+    const action = btn.dataset.action;
+    if (action === 'promote') {
+      await api(`/api/node/${data.id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ status: 'permanent' })
+      });
+      toast('Promoted to permanent');
+      if (nodeMap[data.id]) nodeMap[data.id].status = 'permanent';
+    } else if (action === 'star') {
+      await api(`/api/node/${data.id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ starred: !data.starred })
+      });
+      toast(data.starred ? 'Unstarred' : 'Starred');
+    } else if (action === 'pin') {
+      await api(`/api/node/${data.id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ pinned: !data.pinned })
+      });
+      toast(data.pinned ? 'Unpinned' : 'Pinned');
+    } else if (action === 'delete') {
+      if (confirm('Delete this node?')) {
+        await api(`/api/node/${data.id}`, { method: 'DELETE' });
+        toast('Deleted');
+        closeDetail();
+        await loadGraph();
+      }
+    }
+    await loadGraph();
+  });
+});
+
+// ─── Command Palette ──────────────────────
+function openCmdPalette() {
+  const overlay = document.getElementById('cmd-overlay');
+  overlay.classList.add('open');
+  const input = document.getElementById('cmd-input');
+  input.value = '';
+  input.focus();
+  updateCmdResults('');
+}
+
+function closeCmdPalette() {
+  document.getElementById('cmd-overlay').classList.remove('open');
+}
+
+document.getElementById('cmd-overlay').addEventListener('click', e => {
+  if (e.target === e.currentTarget) closeCmdPalette();
+});
+
+const cmdInput = document.getElementById('cmd-input');
+cmdInput.addEventListener('input', () => updateCmdResults(cmdInput.value));
+cmdInput.addEventListener('keydown', e => {
+  if (e.key === 'Escape') closeCmdPalette();
+  if (e.key === 'Enter') {
+    const active = document.querySelector('.cmd-item.active');
+    if (active) active.click();
+  }
+});
+
+async function updateCmdResults(query) {
+  const container = document.getElementById('cmd-results');
+
+  if (!query) {
+    container.innerHTML = `
+      <div class="cmd-item" style="color:var(--text-muted);font-size:12px">
+        Type to search • + to add • > to link
+      </div>`;
+    return;
+  }
+
+  // Quick add
+  if (query.startsWith('+')) {
+    const text = query.slice(1).trim();
+    container.innerHTML = `
+      <div class="cmd-item active" data-action="add" data-text="${text.replace(/"/g, '&quot;')}">
+        <span style="color:var(--accent)">+ Add:</span> ${text || '...'}
+        <span class="cmd-item-type">enter to add</span>
+      </div>`;
+    container.querySelector('.cmd-item').addEventListener('click', async () => {
+      if (text) {
+        setLoading(true);
+        await api('/api/nl', {
+          method: 'POST',
+          body: JSON.stringify({ text, channel: 'web' })
+        });
+        setLoading(false);
+        toast(`Added: ${text.slice(0, 40)}`);
+        closeCmdPalette();
+        await loadGraph();
+      }
+    });
+    return;
+  }
+
+  // Search
+  setLoading(true);
+  const data = await api(`/api/search?q=${encodeURIComponent(query)}&limit=8`);
+  setLoading(false);
+
+  if (!data?.results?.length) {
+    container.innerHTML = `<div class="cmd-item" style="color:var(--text-muted)">No results</div>`;
+    return;
+  }
+
+  container.innerHTML = data.results.map((r, i) => {
+    const color = TYPE_COLORS[r.node_type] || TYPE_COLORS.note;
+    return `<div class="cmd-item ${i === 0 ? 'active' : ''}" data-id="${r.id}">
+      <div class="conn-dot" style="background:${color}"></div>
+      <span>${r.label || r.content?.slice(0, 50)}</span>
+      <span class="cmd-item-type">${r.node_type}</span>
+    </div>`;
+  }).join('');
+
+  container.querySelectorAll('.cmd-item').forEach(el => {
+    el.addEventListener('click', () => {
+      const id = el.dataset.id;
+      if (nodeMap[id]) {
+        targetCam.x = nodeMap[id].x;
+        targetCam.y = nodeMap[id].y;
+        targetCam.zoom = 1.2;
+        openDetail(nodeMap[id]);
+      }
+      closeCmdPalette();
+    });
+  });
+}
+
+// ─── Add Dialog ───────────────────────────
+const addDialogOverlay = document.getElementById('add-dialog-overlay');
+const addUrlInput = document.getElementById('add-url-input');
+let mediaRecorder = null;
+let audioChunks = [];
+
+function openAddDialog() {
+  addUrlInput.value = '';
+  addDialogOverlay.classList.add('open');
+  setTimeout(() => addUrlInput.focus(), 50);
+}
+function closeAddDialog() {
+  addDialogOverlay.classList.remove('open');
+  // Stop recording if active
+  if (mediaRecorder && mediaRecorder.state === 'recording') {
+    mediaRecorder.stop();
+  }
+}
+
+document.getElementById('add-btn').addEventListener('click', openAddDialog);
+document.getElementById('add-dialog-cancel').addEventListener('click', closeAddDialog);
+addDialogOverlay.addEventListener('click', e => { if (e.target === addDialogOverlay) closeAddDialog(); });
+
+// URL submit
+document.getElementById('add-dialog-submit').addEventListener('click', async () => {
+  const url = addUrlInput.value.trim();
+  if (!url) return;
+  closeAddDialog();
+  const note = await promptForNote('Attach a note to this URL', url);
+  fireNLRequest(url, note);
+});
+addUrlInput.addEventListener('keydown', e => {
+  if (e.key === 'Enter') { e.preventDefault(); document.getElementById('add-dialog-submit').click(); }
+  if (e.key === 'Escape') closeAddDialog();
+});
+
+// File picker
+const fileInput = document.getElementById('file-input');
+document.getElementById('add-file-btn').addEventListener('click', () => {
+  closeAddDialog();
+  fileInput.click();
+});
+
+// Voice recording from dialog
+const addVoiceBtn = document.getElementById('add-voice-btn');
+addVoiceBtn.addEventListener('click', async () => {
+  if (mediaRecorder && mediaRecorder.state === 'recording') {
+    mediaRecorder.stop();
+    return;
+  }
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    mediaRecorder = new MediaRecorder(stream);
+    audioChunks = [];
+    addVoiceBtn.textContent = 'Recording… click to stop';
+    addVoiceBtn.style.borderColor = '#ef4444';
+    addVoiceBtn.style.color = '#ef4444';
+
+    mediaRecorder.ondataavailable = e => audioChunks.push(e.data);
+    mediaRecorder.onstop = async () => {
+      addVoiceBtn.textContent = 'Record audio';
+      addVoiceBtn.style.borderColor = '';
+      addVoiceBtn.style.color = '';
+      stream.getTracks().forEach(t => t.stop());
+      closeAddDialog();
+
+      const blob = new Blob(audioChunks, { type: 'audio/webm' });
+      const formData = new FormData();
+      formData.append('file', blob, 'voice.webm');
+
+      const pt = processingToast('Transcribing audio…');
+      try {
+        const data = await api('/api/transcribe', { method: 'POST', body: formData });
+        if (!data) { pt.done('Transcription failed', 'error'); return; }
+        if (data.transcription) pt.update(`Heard: "${data.transcription}"`);
+        if (data.action === 'search') {
+          pt.done('Search results');
+          showSearchResults(data.results, data.response);
+        } else if (data.action === 'add') {
+          pt.done(data.response || `Added: ${data.node?.label}`);
+          await loadGraph();
+          if (data.node?.id && nodeMap[data.node.id]) {
+            targetCam.x = nodeMap[data.node.id].x;
+            targetCam.y = nodeMap[data.node.id].y;
+            simAlpha = 1.0;
+          }
+        } else {
+          pt.done(data.response || 'Done');
+        }
+      } catch (e) {
+        pt.done('Voice transcription failed', 'error');
+      }
+    };
+    mediaRecorder.start();
+  } catch (e) {
+    toast('Microphone access denied', 'error');
+  }
+});
+fileInput.addEventListener('change', () => {
+  if (fileInput.files[0]) uploadFile(fileInput.files[0]);
+  fileInput.value = '';
+});
+
+// Drag and drop
+document.addEventListener('dragenter', e => {
+  e.preventDefault();
+  document.getElementById('drop-zone').classList.add('active');
+});
+document.getElementById('drop-zone').addEventListener('dragleave', e => {
+  document.getElementById('drop-zone').classList.remove('active');
+});
+document.getElementById('drop-zone').addEventListener('dragover', e => e.preventDefault());
+document.getElementById('drop-zone').addEventListener('drop', async e => {
+  e.preventDefault();
+  document.getElementById('drop-zone').classList.remove('active');
+  const files = e.dataTransfer.files;
+  for (const f of files) {
+    if (f.type.startsWith('image/') || f.type === 'application/pdf') await uploadFile(f);
+  }
+});
+
+// Paste image
+document.addEventListener('paste', async e => {
+  const items = e.clipboardData?.items;
+  if (!items) return;
+  for (const item of items) {
+    if (item.type.startsWith('image/')) {
+      const file = item.getAsFile();
+      if (file) await uploadImage(file);
+    }
+  }
+});
+
+function uploadFile(file) {
+  if (file.type === 'application/pdf') return uploadPDF(file);
+  return uploadImage(file);
+}
+
+async function uploadImage(file) {
+  const note = await promptForNote('Attach a note to this image', file.name);
+  const formData = new FormData();
+  formData.append('file', file);
+  formData.append('content', note);
+  formData.append('label', '');
+
+  // Non-blocking: fire and forget with processing toast
+  const pt = processingToast(`Uploading image: ${file.name.slice(0, 30)}`);
+  fetch(`${API}/api/add-image`, { method: 'POST', body: formData })
+    .then(r => r.json())
+    .then(async data => {
+      pt.done(`Image added: ${data.label?.slice(0, 40)}`);
+      await loadGraph();
+    })
+    .catch(() => pt.done('Image upload failed', 'error'));
+}
+
+async function uploadPDF(file) {
+  const note = await promptForNote('Attach a note to this PDF', file.name);
+  const formData = new FormData();
+  formData.append('file', file);
+  formData.append('content', note);
+  formData.append('label', '');
+
+  // Non-blocking: fire and forget with processing toast
+  const pt = processingToast(`Uploading PDF: ${file.name.slice(0, 30)}`);
+  fetch(`${API}/api/add-pdf`, { method: 'POST', body: formData })
+    .then(r => r.json())
+    .then(async data => {
+      pt.done(`PDF added: ${data.label?.slice(0, 40)}`);
+      await loadGraph();
+    })
+    .catch(() => pt.done('PDF upload failed', 'error'));
+}
+
+// ─── Position Saving ──────────────────────
+let positionSaveTimeout = null;
+let _positionsDirty = false;
+
+function _getPositionData() {
+  return nodes.filter(n => n._pinned).map(n => ({
+    id: n.id, x: Math.round(n.x * 100) / 100, y: Math.round(n.y * 100) / 100
+  }));
+}
+
+function saveNodePosition() {
+  _positionsDirty = true;
+  clearTimeout(positionSaveTimeout);
+  positionSaveTimeout = setTimeout(async () => {
+    const positions = _getPositionData();
+    if (positions.length) {
+      await api('/api/positions', {
+        method: 'POST',
+        body: JSON.stringify(positions)
+      });
+    }
+    _positionsDirty = false;
+    positionSaveTimeout = null;
+  }, 300);
+}
+
+// Flush pending saves on page unload via sendBeacon (only fallback)
+window.addEventListener('beforeunload', () => {
+  if (_positionsDirty) {
+    clearTimeout(positionSaveTimeout);
+    const positions = _getPositionData();
+    if (positions.length) {
+      navigator.sendBeacon(`${API}/api/positions`, new Blob([JSON.stringify(positions)], { type: 'application/json' }));
+    }
+  }
+});
+
+// ─── Process Mode ─────────────────────────
+let processMode = { active: false, items: [], index: 0 };
+
+async function enterProcessMode() {
+  setLoading(true);
+  const data = await api('/api/inbox');
+  setLoading(false);
+  if (!data || !data.items || data.items.length === 0) {
+    toast('Inbox is empty — nothing to process');
+    return;
+  }
+  processMode.active = true;
+  processMode.items = data.items;
+  processMode.index = 0;
+  document.getElementById('process-overlay').classList.add('open');
+  showProcessItem();
+}
+
+function showProcessItem() {
+  const { items, index } = processMode;
+  if (index >= items.length) {
+    exitProcessMode();
+    toast('Inbox cleared — all items processed');
+    return;
+  }
+  const item = items[index];
+  const typeColor = TYPE_COLORS[item.type] || TYPE_COLORS.note;
+
+  document.getElementById('process-progress').textContent = `${index + 1} of ${items.length}`;
+  document.getElementById('process-type-badge').textContent = item.type;
+  document.getElementById('process-type-badge').style.background = typeColor + '20';
+  document.getElementById('process-type-badge').style.color = typeColor;
+  document.getElementById('process-label').textContent = item.label || '(no label)';
+  document.getElementById('process-content').textContent = item.content || '';
+
+  const metaParts = [];
+  if (item.created) metaParts.push(new Date(item.created).toLocaleDateString());
+  if (item.due_date) metaParts.push('due ' + item.due_date);
+  if (item.url) metaParts.push('has URL');
+  if (item.temperature) metaParts.push('temp ' + item.temperature.toFixed(2));
+  document.getElementById('process-meta').textContent = metaParts.join(' \u00b7 ');
+
+  // Focus camera on this node if it exists in the graph
+  if (nodeMap[item.id]) {
+    targetCam.x = nodeMap[item.id].x;
+    targetCam.y = nodeMap[item.id].y;
+    targetCam.zoom = 1.2;
+  }
+}
+
+async function processAction(action) {
+  const { items, index } = processMode;
+  if (index >= items.length) return;
+  const item = items[index];
+
+  if (action === 'promote') {
+    await api(`/api/node/${item.id}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ status: 'permanent' })
+    });
+    toast(`Promoted: ${(item.label || '').slice(0, 40)}`);
+  } else if (action === 'skip') {
+    // Do nothing, just advance
+  } else if (action === 'delete') {
+    await api(`/api/node/${item.id}`, { method: 'DELETE' });
+    toast(`Deleted: ${(item.label || '').slice(0, 40)}`);
+  }
+
+  processMode.index++;
+  showProcessItem();
+}
+
+function exitProcessMode() {
+  processMode.active = false;
+  document.getElementById('process-overlay').classList.remove('open');
+  loadGraph();
+}
+
+// Process mode button handlers
+document.querySelectorAll('.process-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    processAction(btn.dataset.action);
+  });
+});
+
+// Process mode keyboard handler
+document.addEventListener('keydown', e => {
+  if (!processMode.active) return;
+  if (e.key === 'p' || e.key === 'P') { e.preventDefault(); processAction('promote'); }
+  else if (e.key === 's' || e.key === 'S') { e.preventDefault(); processAction('skip'); }
+  else if (e.key === 'd' || e.key === 'D') { e.preventDefault(); processAction('delete'); }
+  else if (e.key === 'Escape') { e.preventDefault(); exitProcessMode(); }
+});
+
+// ─── Layout Mode Toggle ──────────────────
+let layoutMode = localStorage.getItem('om-layout-mode') || 'semantic';
+
+// Restore saved mode on load
+if (layoutMode === 'map') {
+  document.getElementById('mode-map').classList.add('active');
+  document.getElementById('mode-semantic').classList.remove('active');
+}
+
+document.getElementById('mode-semantic').addEventListener('click', async () => {
+  if (layoutMode === 'semantic') return;
+  // Save current map positions to DB before leaving map mode
+  const positions = nodes.map(n => ({
+    id: n.id, x: Math.round(n.x * 100) / 100, y: Math.round(n.y * 100) / 100
+  }));
+  if (positions.length) {
+    await api('/api/positions', { method: 'POST', body: JSON.stringify(positions) });
+  }
+  layoutMode = 'semantic';
+  localStorage.setItem('om-layout-mode', 'semantic');
+  document.getElementById('mode-semantic').classList.add('active');
+  document.getElementById('mode-map').classList.remove('active');
+  for (const n of nodes) {
+    n._pinned = false;
+    n.vx = (Math.random() - 0.5) * 2;
+    n.vy = (Math.random() - 0.5) * 2;
+  }
+  simRunning = true;
+  simAlpha = 1.0;
+});
+
+document.getElementById('mode-map').addEventListener('click', async () => {
+  if (layoutMode === 'map') return;
+  layoutMode = 'map';
+  localStorage.setItem('om-layout-mode', 'map');
+  document.getElementById('mode-map').classList.add('active');
+  document.getElementById('mode-semantic').classList.remove('active');
+  simAlpha = 0;
+  // Reload graph from DB to restore saved map positions
+  await loadGraph();
+});
+
+// ─── Reset Button ────────────────────────
+document.getElementById('reset-btn').addEventListener('click', async () => {
+  const first = confirm('Reset the entire database? This deletes ALL nodes and edges.');
+  if (!first) return;
+  const second = confirm('Are you SURE? This cannot be undone.');
+  if (!second) return;
+  setLoading(true);
+  const data = await api('/api/reset?confirm=yes', { method: 'DELETE' });
+  setLoading(false);
+  if (data?.status === 'reset') {
+    toast('Database reset — fresh start');
+    await loadGraph();
+  } else {
+    toast('Reset failed', 'error');
+  }
+});
+
+// ─── Main Loop ────────────────────────────
+function loop() {
+  simulate();
+  draw();
+  requestAnimationFrame(loop);
+}
+
+// ═══════════════════════════════════════════════════════
+// 3D Rendering System — DISABLED (commented out)
+// ═══════════════════════════════════════════════════════
+
+let is3D = false;
+/* 3D DISABLED
+let threeScene = null;
+let threeCamera = null;
+let threeRenderer = null;
+let nodeMeshes = {};   // id -> THREE.Mesh
+let edgeLines = {};    // id -> THREE.Line
+let sphereGeometry = null;
+let three3DInitialized = false;
+let threeAnimFrameId = null;
+
+// Orbit control state
+let orbitState = {
+  isRotating: false,
+  isPanning: false,
+  mouseMoved: 0,
+  lastX: 0,
+  lastY: 0,
+  theta: 0,
+  phi: Math.PI / 3,
+  radius: 500,
+  targetVec: null,
+};
+
+function initOrbitTarget() {
+  if (!orbitState.targetVec && typeof THREE !== 'undefined') {
+    orbitState.targetVec = new THREE.Vector3(0, 0, 0);
+  }
+}
+
+function init3D() {
+  if (three3DInitialized) return;
+  three3DInitialized = true;
+
+  initOrbitTarget();
+  const container = document.getElementById('three-container');
+
+  // Scene
+  threeScene = new THREE.Scene();
+  threeScene.background = new THREE.Color(0x0a0a0f);
+  threeScene.fog = new THREE.FogExp2(0x0a0a0f, 0.0006);
+
+  // Camera
+  threeCamera = new THREE.PerspectiveCamera(
+    60,
+    window.innerWidth / window.innerHeight,
+    1,
+    5000
+  );
+  updateCameraFromOrbit();
+
+  // Renderer
+  threeRenderer = new THREE.WebGLRenderer({ antialias: true });
+  threeRenderer.setSize(window.innerWidth, window.innerHeight);
+  threeRenderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+  container.appendChild(threeRenderer.domElement);
+
+  // Lights
+  const ambient = new THREE.AmbientLight(0x404060, 0.6);
+  threeScene.add(ambient);
+
+  const pointLight = new THREE.PointLight(0x6ee7b7, 1.2, 1500);
+  pointLight.position.set(0, 200, 300);
+  threeScene.add(pointLight);
+
+  const pointLight2 = new THREE.PointLight(0xa78bfa, 0.5, 1200);
+  pointLight2.position.set(-200, -100, -200);
+  threeScene.add(pointLight2);
+
+  // Shared geometry
+  sphereGeometry = new THREE.SphereGeometry(1, 16, 12);
+
+  // Subtle grid reference plane
+  const gridHelper = new THREE.GridHelper(800, 20, 0x1a1a2e, 0x12121a);
+  gridHelper.position.y = -150;
+  threeScene.add(gridHelper);
+
+  // --- Mouse orbit controls ---
+  const domEl = threeRenderer.domElement;
+
+  domEl.addEventListener('mousedown', (e) => {
+    orbitState.mouseMoved = 0;
+    orbitState.lastX = e.clientX;
+    orbitState.lastY = e.clientY;
+    if (e.button === 0) {
+      orbitState.isRotating = true;
+    } else if (e.button === 2) {
+      orbitState.isPanning = true;
+    }
+    e.preventDefault();
+  });
+
+  domEl.addEventListener('mousemove', (e) => {
+    const dx = e.clientX - orbitState.lastX;
+    const dy = e.clientY - orbitState.lastY;
+    orbitState.mouseMoved += Math.abs(dx) + Math.abs(dy);
+    orbitState.lastX = e.clientX;
+    orbitState.lastY = e.clientY;
+
+    if (orbitState.isRotating) {
+      orbitState.theta -= dx * 0.005;
+      orbitState.phi -= dy * 0.005;
+      orbitState.phi = Math.max(0.05, Math.min(Math.PI - 0.05, orbitState.phi));
+      updateCameraFromOrbit();
+    }
+
+    if (orbitState.isPanning) {
+      const panSpeed = orbitState.radius * 0.001;
+      const right = new THREE.Vector3();
+      const up = new THREE.Vector3();
+      right.setFromMatrixColumn(threeCamera.matrixWorld, 0);
+      up.setFromMatrixColumn(threeCamera.matrixWorld, 1);
+      orbitState.targetVec.addScaledVector(right, -dx * panSpeed);
+      orbitState.targetVec.addScaledVector(up, dy * panSpeed);
+      updateCameraFromOrbit();
+    }
+  });
+
+  domEl.addEventListener('mouseup', (e) => {
+    if (e.button === 0 && orbitState.mouseMoved < 5) {
+      const hit = hitTest3D(e.clientX, e.clientY);
+      if (hit) openDetail(hit);
+    }
+    orbitState.isRotating = false;
+    orbitState.isPanning = false;
+  });
+
+  domEl.addEventListener('wheel', (e) => {
+    e.preventDefault();
+    orbitState.radius *= e.deltaY > 0 ? 1.08 : 0.92;
+    orbitState.radius = Math.max(50, Math.min(3000, orbitState.radius));
+    updateCameraFromOrbit();
+  }, { passive: false });
+
+  domEl.addEventListener('contextmenu', (e) => e.preventDefault());
+
+  // --- Touch orbit controls ---
+  let touchOrbitData = {};
+  domEl.addEventListener('touchstart', (e) => {
+    e.preventDefault();
+    touchOrbitData.moved = 0;
+    if (e.touches.length === 1) {
+      touchOrbitData.lastX = e.touches[0].clientX;
+      touchOrbitData.lastY = e.touches[0].clientY;
+      touchOrbitData.mode = 'rotate';
+    } else if (e.touches.length === 2) {
+      touchOrbitData.mode = 'pinch';
+      touchOrbitData.pinchDist = Math.hypot(
+        e.touches[0].clientX - e.touches[1].clientX,
+        e.touches[0].clientY - e.touches[1].clientY
+      );
+    }
+  }, { passive: false });
+
+  domEl.addEventListener('touchmove', (e) => {
+    e.preventDefault();
+    if (e.touches.length === 1 && touchOrbitData.mode === 'rotate') {
+      const dx = e.touches[0].clientX - touchOrbitData.lastX;
+      const dy = e.touches[0].clientY - touchOrbitData.lastY;
+      touchOrbitData.moved += Math.abs(dx) + Math.abs(dy);
+      touchOrbitData.lastX = e.touches[0].clientX;
+      touchOrbitData.lastY = e.touches[0].clientY;
+      orbitState.theta -= dx * 0.005;
+      orbitState.phi -= dy * 0.005;
+      orbitState.phi = Math.max(0.05, Math.min(Math.PI - 0.05, orbitState.phi));
+      updateCameraFromOrbit();
+    } else if (e.touches.length === 2 && touchOrbitData.mode === 'pinch') {
+      const d = Math.hypot(
+        e.touches[0].clientX - e.touches[1].clientX,
+        e.touches[0].clientY - e.touches[1].clientY
+      );
+      if (touchOrbitData.pinchDist) {
+        const scale = d / touchOrbitData.pinchDist;
+        orbitState.radius /= scale;
+        orbitState.radius = Math.max(50, Math.min(3000, orbitState.radius));
+        updateCameraFromOrbit();
+      }
+      touchOrbitData.pinchDist = d;
+    }
+  }, { passive: false });
+
+  domEl.addEventListener('touchend', (e) => {
+    if (touchOrbitData.mode === 'rotate' && touchOrbitData.moved < 10 && e.changedTouches.length === 1) {
+      const t = e.changedTouches[0];
+      const hit = hitTest3D(t.clientX, t.clientY);
+      if (hit) openDetail(hit);
+    }
+    touchOrbitData = {};
+  });
+}
+
+function updateCameraFromOrbit() {
+  if (!threeCamera) return;
+  const s = orbitState;
+  const t = s.targetVec || { x: 0, y: 0, z: 0 };
+  threeCamera.position.set(
+    t.x + s.radius * Math.sin(s.phi) * Math.sin(s.theta),
+    t.y + s.radius * Math.cos(s.phi),
+    t.z + s.radius * Math.sin(s.phi) * Math.cos(s.theta)
+  );
+  threeCamera.lookAt(t.x || 0, t.y || 0, t.z || 0);
+}
+
+function hexToThreeColor(hex) {
+  return new THREE.Color(hex);
+}
+
+function sync3DGraph() {
+  if (!threeScene) return;
+
+  // Remove old meshes
+  for (const id in nodeMeshes) {
+    threeScene.remove(nodeMeshes[id]);
+    if (nodeMeshes[id].geometry !== sphereGeometry) {
+      nodeMeshes[id].geometry.dispose();
+    }
+    nodeMeshes[id].material.dispose();
+  }
+  nodeMeshes = {};
+
+  // Remove old edge lines
+  for (const id in edgeLines) {
+    threeScene.remove(edgeLines[id]);
+    edgeLines[id].geometry.dispose();
+    edgeLines[id].material.dispose();
+  }
+  edgeLines = {};
+
+  // Create node meshes
+  for (const n of nodes) {
+    const color = hexToThreeColor(n.color);
+    const temp = n.temperature || 1;
+    const scale = n.radius * 0.6;
+
+    const material = new THREE.MeshPhongMaterial({
+      color: color,
+      emissive: color,
+      emissiveIntensity: 0.1 + Math.min(0.5, (temp - 0.5) * 0.3),
+      shininess: 60,
+      transparent: true,
+      opacity: 0.3 + Math.min(0.6, temp * 0.3),
+    });
+
+    const mesh = new THREE.Mesh(sphereGeometry, material);
+    mesh.scale.set(scale, scale, scale);
+    mesh.position.set(n.x, -n.y, n.z);
+    mesh.userData.nodeId = n.id;
+    threeScene.add(mesh);
+    nodeMeshes[n.id] = mesh;
+
+    // Glow sprite for hot / starred nodes
+    if (temp > 1.2 || n.starred) {
+      const spriteMat = new THREE.SpriteMaterial({
+        color: color,
+        transparent: true,
+        opacity: 0.15 + (temp > 1.2 ? 0.1 : 0),
+        blending: THREE.AdditiveBlending,
+      });
+      const sprite = new THREE.Sprite(spriteMat);
+      sprite.scale.set(scale * 4, scale * 4, 1);
+      mesh.add(sprite);
+    }
+  }
+
+  // Create edge lines
+  for (const e of edges) {
+    const a = e.sourceNode, b = e.targetNode;
+    if (!a || !b) continue;
+
+    const geometry = new THREE.BufferGeometry();
+    const positions = new Float32Array(6);
+    positions[0] = a.x; positions[1] = -a.y; positions[2] = a.z;
+    positions[3] = b.x; positions[4] = -b.y; positions[5] = b.z;
+    geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+
+    const weight = e.weight || 0.5;
+    const material = new THREE.LineBasicMaterial({
+      color: 0x4a4a62,
+      transparent: true,
+      opacity: 0.1 + weight * 0.25,
+    });
+
+    const line = new THREE.Line(geometry, material);
+    threeScene.add(line);
+    edgeLines[e.id] = line;
+  }
+}
+
+function hitTest3D(clientX, clientY) {
+  if (!threeCamera || !threeRenderer) return null;
+
+  const rect = threeRenderer.domElement.getBoundingClientRect();
+  const mouse = new THREE.Vector2(
+    ((clientX - rect.left) / rect.width) * 2 - 1,
+    -((clientY - rect.top) / rect.height) * 2 + 1
+  );
+
+  const raycaster = new THREE.Raycaster();
+  raycaster.setFromCamera(mouse, threeCamera);
+
+  const meshArray = Object.values(nodeMeshes);
+  const intersects = raycaster.intersectObjects(meshArray, false);
+
+  if (intersects.length > 0) {
+    const nodeId = intersects[0].object.userData.nodeId;
+    return nodeMap[nodeId] || null;
+  }
+  return null;
+}
+
+function animate3D() {
+  if (!is3D) return;
+  threeAnimFrameId = requestAnimationFrame(animate3D);
+
+  simulate();
+
+  // Update mesh positions from node state
+  for (const n of nodes) {
+    const mesh = nodeMeshes[n.id];
+    if (mesh) {
+      mesh.position.set(n.x, -n.y, n.z);
+
+      // Pulse effect for inbox nodes
+      if (n.status === 'inbox') {
+        const pulse = 1 + Math.sin(Date.now() * 0.003 + n.x) * 0.08;
+        const s = n.radius * 0.6 * pulse;
+        mesh.scale.set(s, s, s);
+      }
+    }
+  }
+
+  // Update edge line positions
+  for (const e of edges) {
+    const line = edgeLines[e.id];
+    if (!line) continue;
+    const a = e.sourceNode, b = e.targetNode;
+    if (!a || !b) continue;
+
+    const pos = line.geometry.attributes.position.array;
+    pos[0] = a.x; pos[1] = -a.y; pos[2] = a.z;
+    pos[3] = b.x; pos[4] = -b.y; pos[5] = b.z;
+    line.geometry.attributes.position.needsUpdate = true;
+
+    // Highlight edges connected to selected node
+    const isHighlighted = selectedNode &&
+      (e.source === selectedNode.id || e.target === selectedNode.id);
+    if (isHighlighted) {
+      line.material.color.set(0x6ee7b7);
+      line.material.opacity = 0.4 + (e.weight || 0.5) * 0.4;
+    } else {
+      line.material.color.set(0x4a4a62);
+      line.material.opacity = 0.1 + (e.weight || 0.5) * 0.25;
+    }
+  }
+
+  threeRenderer.render(threeScene, threeCamera);
+}
+
+// ─── 3D Toggle Handler ────────────────────
+document.getElementById('toggle-3d').addEventListener('click', () => {
+  is3D = !is3D;
+  const btn = document.getElementById('toggle-3d');
+  const container = document.getElementById('three-container');
+
+  btn.classList.toggle('active', is3D);
+
+  if (is3D) {
+    // Switch to 3D
+    canvas.style.display = 'none';
+    container.style.display = 'block';
+
+    if (!three3DInitialized) {
+      init3D();
+    }
+
+    sync3DGraph();
+    simAlpha = 1.0;
+    animate3D();
+  } else {
+    // Switch back to 2D
+    container.style.display = 'none';
+    canvas.style.display = 'block';
+
+    if (threeAnimFrameId) {
+      cancelAnimationFrame(threeAnimFrameId);
+      threeAnimFrameId = null;
+    }
+
+    simAlpha = 1.0;
+    loop();
+  }
+});
+
+// Observe graph data changes to sync 3D view
+const _statNodesEl = document.getElementById('stat-nodes');
+const _graphObserver = new MutationObserver(() => {
+  if (is3D && threeScene) {
+    sync3DGraph();
+  }
+});
+_graphObserver.observe(_statNodesEl, { childList: true, characterData: true, subtree: true });
+3D DISABLED */
+
+// ─── Init ─────────────────────────────────
+resize();
+window.addEventListener('resize', resize);
+loadGraph().then(() => {
+  // Center camera on graph centroid
+  if (nodes.length) {
+    let cx = 0, cy = 0;
+    nodes.forEach(n => { cx += n.x; cy += n.y; });
+    targetCam.x = cx / nodes.length;
+    targetCam.y = cy / nodes.length;
+  }
+  loop();
+});
+
+// Periodically refresh
+setInterval(loadGraph, 60000);
+</script>
+</body>
+</html>
