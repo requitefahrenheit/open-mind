@@ -53,7 +53,7 @@ fi
 if [ -z "$OPENAI_API_KEY" ]; then
     echo ""
     echo "⚠ OPENAI_API_KEY not set. LLM features will be disabled."
-    echo "  Set it with: export OPENAI_API_KEY=REDACTED
+    echo "  Set it with: export OPENAI_API_KEY=$OPENAI_API_KEY
     echo "  Or add to ~/.bashrc"
 fi
 

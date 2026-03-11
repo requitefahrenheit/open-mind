@@ -1,9 +1,10 @@
+source ~/claude/env.sh
 # Twilio SMS
-export TWILIO_ACCOUNT_SID=REDACTED
-export TWILIO_AUTH_TOKEN=REDACTED
-export TWILIO_PHONE_NUMBER=REDACTED
+export TWILIO_ACCOUNT_SID=$TWILIO_ACCOUNT_SID
+export TWILIO_AUTH_TOKEN=$TWILIO_AUTH_TOKEN
+export TWILIO_PHONE_NUMBER=$TWILIO_PHONE_NUMBER
 
-export OPENAI_API_KEY=REDACTED
+export OPENAI_API_KEY=$OPENAI_API_KEY
 
 pkill -f "cloudflared tunnel run openmind" 2>/dev/null
 pkill -f om-server.py 2>/dev/null
