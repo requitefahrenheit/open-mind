@@ -3316,6 +3316,7 @@ let _hiddenNodesCache = new Set();
 let _clusterRepsCache = {};
 const SIM_DECAY = 0.998;
 const REPULSION = 800;
+const BH_THETA = 0.9;  // Barnes-Hut accuracy: lower=more accurate, higher=faster
 const ATTRACTION = 0.005;
 const EDGE_LENGTH = 120;
 const DAMPING = 0.85;
@@ -3983,6 +3984,91 @@ function calcRadius(n) {
 }
 
 // ─── Physics Simulation ──────────────────
+
+// ═══ Barnes-Hut Quadtree — O(n log n) repulsion ════════════════════════════════
+// Each node is a {x,y,mass,cx,cy,size,nw,ne,sw,se,leaf,body}
+function _bhInsert(node, body, x, y, size) {
+  if (size < 0.5) return; // minimum cell size
+  if (node.leaf && node.body === null) {
+    // Empty leaf: store body here
+    node.body = body;
+    node.cx = body.x; node.cy = body.y;
+    node.mass = 1;
+    return;
+  }
+  // If leaf with existing body, subdivide
+  if (node.leaf && node.body !== null) {
+    const old = node.body;
+    node.body = null; node.leaf = false;
+    node.nw = {leaf:true,body:null,mass:0,cx:0,cy:0};
+    node.ne = {leaf:true,body:null,mass:0,cx:0,cy:0};
+    node.sw = {leaf:true,body:null,mass:0,cx:0,cy:0};
+    node.se = {leaf:true,body:null,mass:0,cx:0,cy:0};
+    _bhInsert(node, old, x, y, size);
+  }
+  // Internal node: update center of mass
+  const t = node.mass + 1;
+  node.cx = (node.cx * node.mass + body.x) / t;
+  node.cy = (node.cy * node.mass + body.y) / t;
+  node.mass = t;
+  // Route body to correct quadrant
+  const mx = x + size * 0.5, my = y + size * 0.5;
+  if (body.x < mx) {
+    if (body.y < my) _bhInsert(node.nw, body, x,      y,      size*0.5);
+    else             _bhInsert(node.sw, body, x,      my,     size*0.5);
+  } else {
+    if (body.y < my) _bhInsert(node.ne, body, mx,     y,      size*0.5);
+    else             _bhInsert(node.se, body, mx,     my,     size*0.5);
+  }
+}
+
+function _bhForce(node, body, size, theta, repulsion, out) {
+  if (!node || node.mass === 0) return;
+  if (node.leaf) {
+    if (node.body === null || node.body === body) return;
+    const dx = body.x - node.body.x;
+    const dy = body.y - node.body.y;
+    const dist = Math.sqrt(dx*dx + dy*dy) || 1;
+    const f = repulsion / (dist * dist);
+    out.fx += (dx / dist) * f;
+    out.fy += (dy / dist) * f;
+    return;
+  }
+  const dx = body.x - node.cx;
+  const dy = body.y - node.cy;
+  const dist = Math.sqrt(dx*dx + dy*dy) || 1;
+  if (size / dist < theta) {
+    // Treat whole cell as single mass
+    const f = repulsion * node.mass / (dist * dist);
+    out.fx += (dx / dist) * f;
+    out.fy += (dy / dist) * f;
+    return;
+  }
+  const hs = size * 0.5;
+  _bhForce(node.nw, body, hs, theta, repulsion, out);
+  _bhForce(node.ne, body, hs, theta, repulsion, out);
+  _bhForce(node.sw, body, hs, theta, repulsion, out);
+  _bhForce(node.se, body, hs, theta, repulsion, out);
+}
+
+function _buildBHTree(nodes) {
+  if (nodes.length === 0) return null;
+  // Compute bounding box
+  let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+  for (const n of nodes) {
+    if (n.x < minX) minX = n.x; if (n.x > maxX) maxX = n.x;
+    if (n.y < minY) minY = n.y; if (n.y > maxY) maxY = n.y;
+  }
+  const pad = 100;
+  const size = Math.max(maxX - minX, maxY - minY) + pad * 2;
+  const ox = minX - pad, oy = minY - pad;
+  const root = {leaf:true, body:null, mass:0, cx:0, cy:0,
+                 nw:null, ne:null, sw:null, se:null};
+  for (const n of nodes) _bhInsert(root, n, ox, oy, size);
+  return {root, ox, oy, size};
+}
+// ════════════════════════════════════════════════════════════════════════════
+
 function simulate() {
   if (!CANVAS_VIEWS.includes(currentView)) return;
   if (!simRunning || simAlpha < 0.001 || layoutMode === 'map') return;
@@ -3992,19 +4078,30 @@ function simulate() {
 
   const use3D = typeof is3D !== 'undefined' && is3D;
 
-  // Repulsion (all pairs)
-  for (let i = 0; i < nodes.length; i++) {
-    for (let j = i + 1; j < nodes.length; j++) {
-      const a = nodes[i], b = nodes[j];
-      let dx = b.x - a.x, dy = b.y - a.y;
-      let dz = use3D ? (b.z - a.z) : 0;
-      let dist = Math.sqrt(dx * dx + dy * dy + dz * dz) || 1;
-      let force = (REPULSION * alpha) / (dist * dist);
-      let fx = (dx / dist) * force;
-      let fy = (dy / dist) * force;
-      let fz = use3D ? (dz / dist) * force : 0;
-      if (!a._pinned) { a.vx -= fx; a.vy -= fy; if (use3D) a.vz -= fz; }
-      if (!b._pinned) { b.vx += fx; b.vy += fy; if (use3D) b.vz += fz; }
+  // Repulsion — Barnes-Hut O(n log n) (falls back to direct for use3D)
+  if (!use3D && nodes.length > 0) {
+    const _bh = _buildBHTree(nodes);
+    if (_bh) {
+      const _out = {fx:0, fy:0};
+      for (const n of nodes) {
+        if (n._pinned) continue;
+        _out.fx = 0; _out.fy = 0;
+        _bhForce(_bh.root, n, _bh.size, BH_THETA, REPULSION * alpha, _out);
+        n.vx += _out.fx;
+        n.vy += _out.fy;
+      }
+    }
+  } else {
+    // 3D fallback: direct O(n²)
+    for (let i = 0; i < nodes.length; i++) {
+      for (let j = i + 1; j < nodes.length; j++) {
+        const a = nodes[i], b = nodes[j];
+        let dx=b.x-a.x, dy=b.y-a.y, dz=b.z-a.z;
+        let dist=Math.sqrt(dx*dx+dy*dy+dz*dz)||1;
+        let f=(REPULSION*alpha)/(dist*dist);
+        if(!a._pinned){a.vx-=(dx/dist)*f;a.vy-=(dy/dist)*f;a.vz-=(dz/dist)*f;}
+        if(!b._pinned){b.vx+=(dx/dist)*f;b.vy+=(dy/dist)*f;b.vz+=(dz/dist)*f;}
+      }
     }
   }
 
