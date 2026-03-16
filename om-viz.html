@@ -3952,7 +3952,8 @@ function preloadThumb(node) {
   if (url) {
     if (_thumbCache.has(url)) { node._thumb = _thumbCache.get(url); return; }
     const img = new Image();
-    img.crossOrigin = 'anonymous';
+    // NO crossOrigin on same-origin uploads — breaks Safari + some Chrome configs
+    img.onload = () => { _canvasDirty = true; }; // redraw once loaded
     img.src = url;
     _thumbCache.set(url, img);
     node._thumb = img;
@@ -9902,20 +9903,15 @@ function _glDragStart() {
   for (const g of pdState.nodeEls.values()) g.style.willChange='transform';
   if (!_glInited) _glInited = _initWebGL();
   if (!_glInited) return;
-  const glc = document.getElementById('pd-webgl');
-  if (glc) { glc.style.display='block'; _glResize(glc); }
-  const ng = s?.querySelector('#pd-nodes');
-  if (ng) ng.style.opacity='0';
+  // GL canvas hidden — we run the GL path for perf but keep SVG nodes visible
+  // (showing circles instead of thumbnails during drag was not desired)
 }
 
 function _glDragEnd() {
   const s = pdState._svg;
   if (s) s.classList.remove('pd-dragging');
   for (const g of pdState.nodeEls.values()) g.style.willChange='';
-  const glc = document.getElementById('pd-webgl');
-  if (glc) glc.style.display='none';
-  const ng = s?.querySelector('#pd-nodes');
-  if (ng) ng.style.opacity='';
+  // GL canvas was never shown, nothing to hide
   if (pdState.positions.size>0) {
     _updatePdPositions(pdState.positions,pdState.diskCx,pdState.diskCy,pdState.diskR,false);
   }
