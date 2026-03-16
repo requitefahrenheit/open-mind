@@ -35,6 +35,9 @@ EMBED_MODEL = "all-MiniLM-L6-v2"
 SIMILARITY_THRESHOLD = 0.45  # auto-link above this cosine sim
 MAX_AUTO_EDGES = 5           # max auto-links per add
 LLM_MODEL = "gpt-4o-mini"
+VISION_MODEL = "gpt-4o"
+OPENAI_EMBED_MODEL = "text-embedding-3-small"
+ENRICH_SEMAPHORE_SIZE = 3
 
 # ─── Structured Type Schemas (v3 feature 6) ─────────
 TYPE_SCHEMAS = {
@@ -98,6 +101,7 @@ db: sqlite3.Connection = None
 db_lock = threading.Lock()  # Protect SQLite from concurrent access
 embedder = None  # SentenceTransformer
 _openai_client = None
+_enrich_semaphore = None
 
 # ─── Database ────────────────────────────────────────
 def init_db():
@@ -174,6 +178,9 @@ def init_db():
     except sqlite3.OperationalError:
         pass  # column already exists
 
+    for _col in ["ALTER TABLE nodes ADD COLUMN enriched_at TEXT","ALTER TABLE nodes ADD COLUMN digest TEXT","ALTER TABLE nodes ADD COLUMN openai_embedding BLOB"]:
+        try: db.execute(_col)
+        except: pass
     # Add resurfaced_at column (v3 feature 3 — resurface forgotten nodes)
     try:
         db.execute("ALTER TABLE nodes ADD COLUMN resurfaced_at TEXT")
@@ -253,23 +260,33 @@ def cosine_sim(a_bytes: bytes, b_bytes: bytes) -> float:
     return float(np.dot(a, b))
 
 
+def _temporal_boost(created_at_str, sim):
+    try:
+        import math
+        from datetime import datetime
+        age = (datetime.utcnow()-datetime.fromisoformat(created_at_str)).total_seconds()/86400
+        return sim*(1+0.15*math.exp(-age*math.log(2)/30))
+    except: return sim
+
 def semantic_search(query: str, limit: int = 10, threshold: float = 0.3):
     if embedder is None:
         return []
     q_vec = embedder.encode(query, normalize_embeddings=True).astype(np.float32).tobytes()
     with db_lock:
-        rows = db.execute("SELECT id, content, label, node_type, status, embedding FROM nodes WHERE embedding IS NOT NULL").fetchall()
+        rows = db.execute("SELECT id, content, label, node_type, status, embedding, created_at FROM nodes WHERE embedding IS NOT NULL").fetchall()
     results = []
     for r in rows:
         sim = cosine_sim(q_vec, r["embedding"])
         if sim >= threshold:
+            boosted = _temporal_boost(r["created_at"] or "", sim)
             results.append({
                 "id": r["id"],
                 "content": r["content"][:200],
                 "label": r["label"],
                 "node_type": r["node_type"],
                 "status": r["status"],
-                "score": round(sim, 4)
+                "score": round(boosted, 4),
+                "raw_score": round(sim, 4)
             })
     results.sort(key=lambda x: x["score"], reverse=True)
     return results[:limit]
@@ -281,18 +298,20 @@ def semantic_search_full(query: str, limit: int = 15, threshold: float = 0.3):
         return []
     q_vec = embedder.encode(query, normalize_embeddings=True).astype(np.float32).tobytes()
     with db_lock:
-        rows = db.execute("SELECT id, content, label, node_type, status, embedding FROM nodes WHERE embedding IS NOT NULL").fetchall()
+        rows = db.execute("SELECT id, content, label, node_type, status, embedding, created_at FROM nodes WHERE embedding IS NOT NULL").fetchall()
     results = []
     for r in rows:
         sim = cosine_sim(q_vec, r["embedding"])
         if sim >= threshold:
+            boosted = _temporal_boost(r["created_at"] or "", sim)
             results.append({
                 "id": r["id"],
-                "content": r["content"],  # full content
+                "content": r["content"],
                 "label": r["label"],
                 "node_type": r["node_type"],
                 "status": r["status"],
-                "score": round(sim, 4)
+                "score": round(boosted, 4),
+                "raw_score": round(sim, 4)
             })
     results.sort(key=lambda x: x["score"], reverse=True)
     return results[:limit]
@@ -558,15 +577,15 @@ def caption_image(image_path: str) -> str:
         mime = mime_map.get(ext, "image/jpeg")
 
         r = client.post("/chat/completions", json={
-            "model": LLM_MODEL,  # gpt-4o-mini supports vision
+            "model": VISION_MODEL,  # gpt-4o for best caption quality
             "messages": [{
                 "role": "user",
                 "content": [
-                    {"type": "text", "text": "Describe this image in 2-3 sentences. Focus on what's depicted, any visible text, and the overall context. Be concise."},
-                    {"type": "image_url", "image_url": {"url": f"data:{mime};base64,{img_data}", "detail": "low"}}
+                    {"type": "text", "text": "Describe this image in 3-5 sentences covering: what is depicted, any people or objects, visible text, setting/context, and notable visual details."},
+                    {"type": "image_url", "image_url": {"url": f"data:{mime};base64,{img_data}", "detail": "high"}}
                 ]
             }],
-            "max_tokens": 200,
+            "max_tokens": 600,
             "temperature": 0.3
         })
         data = r.json()
@@ -591,7 +610,7 @@ def detailed_image_description(image_path: str) -> str:
         mime = mime_map.get(ext, "image/jpeg")
 
         r = client.post("/chat/completions", json={
-            "model": LLM_MODEL,
+            "model": VISION_MODEL,
             "messages": [{
                 "role": "user",
                 "content": [
@@ -602,12 +621,12 @@ def detailed_image_description(image_path: str) -> str:
                         "3. Potential topics, themes, or categories\n"
                         "4. Any visible text, labels, or data\n"
                         "5. Emotional tone or context if applicable\n"
-                        "Be thorough but structured. About 100-150 words."
+                        "Be thorough and specific. 150-200 words."
                     )},
-                    {"type": "image_url", "image_url": {"url": f"data:{mime};base64,{img_data}", "detail": "low"}}
+                    {"type": "image_url", "image_url": {"url": f"data:{mime};base64,{img_data}", "detail": "high"}}
                 ]
             }],
-            "max_tokens": 400,
+            "max_tokens": 800,
             "temperature": 0.3
         })
         data = r.json()
@@ -616,6 +635,49 @@ def detailed_image_description(image_path: str) -> str:
         log.warning(f"Detailed image description failed: {e}")
         return ""
 
+
+
+def get_openai_embedding(text):
+    client = get_openai()
+    if not client or not text.strip(): return None
+    try:
+        import numpy as _np
+        r = client.post("/embeddings", json={"model": OPENAI_EMBED_MODEL, "input": text[:8000], "encoding_format": "float"})
+        vec = _np.array(r.json()["data"][0]["embedding"], dtype=_np.float32)
+        n = _np.linalg.norm(vec)
+        if n > 0: vec /= n
+        return vec.tobytes()
+    except Exception as e:
+        log.warning(f"OpenAI embedding failed: {e}")
+        return None
+
+def generate_node_digest(label, content, node_type):
+    client = get_openai()
+    if not client: return ""
+    try:
+        system = "You write concise 2-4 sentence narrative digests for personal knowledge graph nodes. Be direct and informative. No preamble."
+        user = f"Type: {node_type}\nLabel: {label}\n\n{content[:600]}"
+        return (llm_chat(system, user, model=LLM_MODEL) or "").strip()[:500]
+    except Exception as e:
+        log.warning(f"Digest generation failed: {e}")
+        return ""
+
+async def enrich_node_background(node_id, label, content, node_type):
+    if not _enrich_semaphore or not OPENAI_KEY: return
+    async with _enrich_semaphore:
+        try:
+            text = f"{label}. {content[:800]}"
+            digest, oai_emb = await asyncio.gather(
+                asyncio.to_thread(generate_node_digest, label, content, node_type),
+                asyncio.to_thread(get_openai_embedding, text),
+            )
+            with db_lock:
+                db.execute("UPDATE nodes SET digest=?, openai_embedding=?, enriched_at=datetime('now') WHERE id=?",
+                           (digest or None, oai_emb, node_id))
+                db.commit()
+            log.info(f"[ENRICH] Node {node_id}: digest+oai_embedding stored")
+        except Exception as e:
+            log.error(f"Node enrichment error {node_id}: {e}")
 
 # ─── Edge Classification ─────────────────────────────
 def classify_edges(source_text: str, targets: list) -> dict:
@@ -738,13 +800,12 @@ async def fire_edge_enrichment(node_id: str):
                   AND e.label != 'daily'
             """, (node_id, node_id)).fetchall()
 
-        for edge in edges:
-            await asyncio.to_thread(
-                enrich_edge_relationship,
-                edge["id"],
-                edge["s_label"], edge["s_content"],
-                edge["t_label"], edge["t_content"]
-            )
+        if edges:
+            async def _one(edge):
+                if not _enrich_semaphore: return
+                async with _enrich_semaphore:
+                    await asyncio.to_thread(enrich_edge_relationship, edge["id"], edge["s_label"], edge["s_content"], edge["t_label"], edge["t_content"])
+            await asyncio.gather(*[_one(e) for e in edges])
     except Exception as e:
         log.error(f"Edge enrichment error: {e}")
 
@@ -942,6 +1003,7 @@ def get_full_graph():
             "url": r["url"],
             "due_date": r["due_date"],
             "temperature": r["temperature"],
+            "digest": r["digest"] if "digest" in r.keys() else None,
             "visits": r["visit_count"],
             "meta": json.loads(r["metadata"] or "{}"),
             "created": r["created_at"],
@@ -1421,6 +1483,8 @@ class CanvasChatMessage(BaseModel):
 # ─── Lifespan ────────────────────────────────────────
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    global _enrich_semaphore
+    _enrich_semaphore = asyncio.Semaphore(ENRICH_SEMAPHORE_SIZE)
     init_db()
     init_embedder()
     ensure_daily_node()
@@ -1512,9 +1576,11 @@ async def api_add(req: AddRequest):
         create_node, content=content, label=label, node_type=node_type,
         url=url, due_date=due_date, pinned=req.pinned
     )
-    # Fire-and-forget edge enrichment
-    if OPENAI_KEY and result.get("auto_edges"):
-        asyncio.create_task(fire_edge_enrichment(result["id"]))
+    # Fire-and-forget edge enrichment + node digest/embedding
+    if OPENAI_KEY:
+        if result.get("auto_edges"):
+            asyncio.create_task(fire_edge_enrichment(result["id"]))
+        asyncio.create_task(enrich_node_background(result["id"], result["label"], content, node_type))
     return JSONResponse(result)
 
 
@@ -1704,9 +1770,11 @@ async def api_transcribe(file: UploadFile = File(...)):
             url=url,
             due_date=parsed.get("due_date")
         )
-        # Fire-and-forget edge enrichment
-        if OPENAI_KEY and result.get("auto_edges"):
-            asyncio.create_task(fire_edge_enrichment(result["id"]))
+        # Fire-and-forget edge enrichment + node enrichment
+        if OPENAI_KEY:
+            if result.get("auto_edges"):
+                asyncio.create_task(fire_edge_enrichment(result["id"]))
+            asyncio.create_task(enrich_node_background(result["id"], result["label"], result.get("content",""), result.get("node_type","note")))
         return JSONResponse({
             "transcription": transcript,
             "action": "add",
@@ -1807,9 +1875,11 @@ async def api_nl(req: NLQueryRequest):
             due_date=parsed.get("due_date"),
             metadata=meta if meta else None
         )
-        # Fire-and-forget edge enrichment
-        if OPENAI_KEY and result.get("auto_edges"):
-            asyncio.create_task(fire_edge_enrichment(result["id"]))
+        # Fire-and-forget edge enrichment + node enrichment
+        if OPENAI_KEY:
+            if result.get("auto_edges"):
+                asyncio.create_task(fire_edge_enrichment(result["id"]))
+            asyncio.create_task(enrich_node_background(result["id"], result["label"], result.get("content",""), result.get("node_type","note")))
         return JSONResponse({
             "action": "add",
             "node": result,
