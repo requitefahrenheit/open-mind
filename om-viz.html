@@ -3304,12 +3304,16 @@ let _lastCanvasClickPos = null; // screen {x,y} at last canvas node click — fo
 let addModeCanvas = null; // canvas object selected in add-mode widget
 let isPanning = false;
 let panStart = { x: 0, y: 0 };
+let _panVx=0,_panVy=0,_panLastX=0,_panLastY=0,_panLastT=0,_panMomentumRAF=null;
 let lastMouse = { x: 0, y: 0 };
 
 // Physics
 let simRunning = true;
 let simAlpha = 1.0;
 let _canvasDirty = true; // idle guard: skip draw() when nothing has changed
+let _hiddenNodesDirty = true;
+let _hiddenNodesCache = new Set();
+let _clusterRepsCache = {};
 const SIM_DECAY = 0.998;
 const REPULSION = 800;
 const ATTRACTION = 0.005;
@@ -3823,6 +3827,7 @@ async function loadGraph() {
 
   // Store cluster data from server
   clusters = data.clusters || [];
+  _hiddenNodesDirty = true;
 
   // Update stats
   document.getElementById('stat-nodes').textContent = nodes.length;
@@ -4074,12 +4079,15 @@ function screenToWorld(sx, sy) {
   };
 }
 
+const _HEX = Array.from({length:256},(_,i)=>i.toString(16).padStart(2,'0'));
+let _gradCache = new Map(); let _gradCacheZoom = -1;
+
 function draw() {
   if (!CANVAS_VIEWS.includes(currentView)) return;
-  // Smooth camera
-  cam.x += (targetCam.x - cam.x) * 0.1;
-  cam.y += (targetCam.y - cam.y) * 0.1;
-  cam.zoom += (targetCam.zoom - cam.zoom) * 0.1;
+  cam.x += (targetCam.x - cam.x) * 0.12;
+  cam.y += (targetCam.y - cam.y) * 0.12;
+  cam.zoom += (targetCam.zoom - cam.zoom) * 0.12;
+  if (Math.abs(cam.zoom - _gradCacheZoom) > 0.001) { _gradCache.clear(); _gradCacheZoom = cam.zoom; }
 
   ctx.clearRect(0, 0, window.innerWidth, window.innerHeight);
 
@@ -4135,23 +4143,21 @@ function draw() {
     }
   }
 
-  // Determine which nodes are hidden due to collapsed clusters
-  const hiddenNodes = new Set();
-  const clusterRepresentatives = {};  // cluster.id -> representative node
-  for (const cluster of clusters) {
-    if (!collapsedClusters.has(cluster.id)) continue;
-    const memberNodes = cluster.members.map(id => nodeMap[id]).filter(Boolean);
-    if (memberNodes.length === 0) continue;
-    // Pick the node with highest temperature as representative
-    let rep = memberNodes[0];
-    for (const mn of memberNodes) {
-      if ((mn.temperature || 0) > (rep.temperature || 0)) rep = mn;
+  if (_hiddenNodesDirty) {
+    _hiddenNodesCache.clear(); _clusterRepsCache = {};
+    for (const cluster of clusters) {
+      if (!collapsedClusters.has(cluster.id)) continue;
+      const memberNodes = cluster.members.map(id => nodeMap[id]).filter(Boolean);
+      if (memberNodes.length === 0) continue;
+      let rep = memberNodes[0];
+      for (const mn of memberNodes) { if ((mn.temperature||0)>(rep.temperature||0)) rep=mn; }
+      _clusterRepsCache[cluster.id] = rep;
+      for (const mn of memberNodes) { if (mn.id !== rep.id) _hiddenNodesCache.add(mn.id); }
     }
-    clusterRepresentatives[cluster.id] = rep;
-    for (const mn of memberNodes) {
-      if (mn.id !== rep.id) hiddenNodes.add(mn.id);
-    }
+    _hiddenNodesDirty = false;
   }
+  const hiddenNodes = _hiddenNodesCache;
+  const clusterRepresentatives = _clusterRepsCache;
 
   // Draw edges
   for (const e of edges) {
@@ -4172,10 +4178,10 @@ function draw() {
     const relType = e.relationship_type || 'related';
     const relColor = edgeColor(relType);
     if (isHighlighted) {
-      ctx.strokeStyle = relColor + Math.round(0.5 * 255).toString(16).padStart(2, '0');
+      ctx.strokeStyle = relColor + _HEX[128];
       ctx.lineWidth = 2;
     } else {
-      ctx.strokeStyle = relColor + Math.round(0.15 * 255).toString(16).padStart(2, '0');
+      ctx.strokeStyle = relColor + _HEX[38];
       ctx.lineWidth = 0.8;
     }
     ctx.stroke();
@@ -4198,12 +4204,12 @@ function draw() {
 
   // Draw nodes (hovered node drawn last for z-order)
   const now = Date.now();
-  const _drawOrder = hoveredNode
-    ? nodes.filter(n => !hiddenNodes.has(n.id) && n.id !== hoveredNode.id).concat([hoveredNode])
-    : nodes;
-  for (const n of _drawOrder) {
-    // Skip nodes hidden by collapsed clusters
+  const _hovId = hoveredNode ? hoveredNode.id : null;
+  for (let _pass = 0; _pass < 2; _pass++) {
+  for (const n of nodes) {
     if (hiddenNodes.has(n.id)) continue;
+    if (_pass === 0 && n.id === _hovId) continue;
+    if (_pass === 1 && n.id !== _hovId) continue;
     const s = worldToScreen(n.x, n.y);
     const baseR = n.radius * cam.zoom;
     const isHovered = hoveredNode && hoveredNode.id === n.id;
@@ -4276,7 +4282,7 @@ function draw() {
     } else {
       // Fill with temperature gradient
       const alpha = 0.15 + temp * 0.15;
-      ctx.fillStyle = n.color + Math.floor(alpha * 255).toString(16).padStart(2, '0');
+      ctx.fillStyle = n.color + _HEX[Math.floor(alpha * 255) & 255];
       ctx.fill();
     }
 
@@ -4336,6 +4342,7 @@ function draw() {
     ctx.fill();
     if (_timeHidden) ctx.globalAlpha = 1;
   }
+  } // end pass
 }
 
 function roundRect(ctx, x, y, w, h, r) {
@@ -4466,6 +4473,8 @@ canvas.addEventListener('mousedown', e => {
   } else {
     isPanning = true;
     panStart = { x: e.clientX, y: e.clientY };
+    _panVx=0;_panVy=0;_panLastX=e.clientX;_panLastY=e.clientY;_panLastT=performance.now();
+    if(_panMomentumRAF){cancelAnimationFrame(_panMomentumRAF);_panMomentumRAF=null;}
     canvas.classList.add('dragging');
     _removeCanvasHoverCard();
   }
@@ -4485,12 +4494,14 @@ canvas.addEventListener('mousemove', e => {
   }
 
   if (isPanning) {
-    didDrag = true;
-    const dx = e.clientX - panStart.x;
-    const dy = e.clientY - panStart.y;
-    targetCam.x -= dx / cam.zoom;
-    targetCam.y -= dy / cam.zoom;
-    panStart = { x: e.clientX, y: e.clientY };
+    const dx=e.clientX-panStart.x, dy=e.clientY-panStart.y;
+    if (!didDrag && Math.hypot(dx,dy)<4) return;
+    didDrag=true;
+    const _nt=performance.now(),_dt=Math.max(_nt-_panLastT,1);
+    _panVx=(e.clientX-_panLastX)/_dt; _panVy=(e.clientY-_panLastY)/_dt;
+    _panLastX=e.clientX;_panLastY=e.clientY;_panLastT=_nt;
+    targetCam.x-=dx/cam.zoom; targetCam.y-=dy/cam.zoom;
+    panStart={x:e.clientX,y:e.clientY};
     return;
   }
 
@@ -4516,8 +4527,15 @@ canvas.addEventListener('mouseup', e => {
       else enterFocusView(hit.id);
     } else closeSearch();
   }
-  isPanning = false;
-  didDrag = false;
+  if(isPanning&&(Math.abs(_panVx)>0.05||Math.abs(_panVy)>0.05)){
+    let mvx=_panVx*16,mvy=_panVy*16;
+    function _pTick(){mvx*=0.88;mvy*=0.88;
+      if(Math.hypot(mvx,mvy)<0.3){_panMomentumRAF=null;return;}
+      targetCam.x-=mvx/cam.zoom;targetCam.y-=mvy/cam.zoom;_canvasDirty=true;
+      _panMomentumRAF=requestAnimationFrame(_pTick);}
+    _panMomentumRAF=requestAnimationFrame(_pTick);
+  }
+  isPanning=false; didDrag=false;
   canvas.classList.remove('dragging');
 });
 
@@ -4550,9 +4568,9 @@ canvas.addEventListener('dblclick', e => {
       // Click within the boundary ring area (between 70% and 110% of radius)
       if (distToCenter < boundaryR * 1.1 && distToCenter > boundaryR * 0.7) {
         if (collapsedClusters.has(cluster.id)) {
-          collapsedClusters.delete(cluster.id);
+          _hiddenNodesDirty=true; collapsedClusters.delete(cluster.id);
         } else {
-          collapsedClusters.add(cluster.id);
+          _hiddenNodesDirty=true; collapsedClusters.add(cluster.id);
         }
         simAlpha = Math.max(simAlpha, 0.3);
         break;
@@ -4600,8 +4618,10 @@ canvas.addEventListener('touchstart', e => {
         }, 500);
       }
     } else {
-      isPanning = true;
-      panStart = { x: t.clientX, y: t.clientY };
+      isPanning=true;
+      panStart={x:t.clientX,y:t.clientY};
+      _panVx=0;_panVy=0;_panLastX=t.clientX;_panLastY=t.clientY;_panLastT=performance.now();
+      if(_panMomentumRAF){cancelAnimationFrame(_panMomentumRAF);_panMomentumRAF=null;}
     }
   }
 }, { passive: false });
@@ -4616,11 +4636,13 @@ canvas.addEventListener('touchmove', e => {
       const w = screenToWorld(t.clientX, t.clientY);
       dragNode.x = w.x; dragNode.y = w.y;
     } else if (isPanning) {
-      const dx = t.clientX - panStart.x;
-      const dy = t.clientY - panStart.y;
-      targetCam.x -= dx / cam.zoom;
-      targetCam.y -= dy / cam.zoom;
-      panStart = { x: t.clientX, y: t.clientY };
+      const dx=t.clientX-panStart.x,dy=t.clientY-panStart.y;
+      if(!touchDragged&&Math.hypot(dx,dy)<4) return;
+      const _tn=performance.now(),_tdt=Math.max(_tn-_panLastT,1);
+      _panVx=(t.clientX-_panLastX)/_tdt;_panVy=(t.clientY-_panLastY)/_tdt;
+      _panLastX=t.clientX;_panLastY=t.clientY;_panLastT=_tn;
+      targetCam.x-=dx/cam.zoom;targetCam.y-=dy/cam.zoom;
+      panStart={x:t.clientX,y:t.clientY};
     }
   } else if (e.touches.length === 2) {
     // Pinch zoom
@@ -4660,9 +4682,15 @@ canvas.addEventListener('touchend', e => {
     }
   }
   if (isPhone) { clearTimeout(_canvasLongTimer); _canvasLongTimer = null; }
-  isPanning = false;
-  touchDragged = false;
-  touches = {};
+  if(isPanning&&!dragNode&&(Math.abs(_panVx)>0.05||Math.abs(_panVy)>0.05)){
+    let tmx=_panVx*16,tmy=_panVy*16;
+    function _tpTick(){tmx*=0.88;tmy*=0.88;
+      if(Math.hypot(tmx,tmy)<0.3){_panMomentumRAF=null;return;}
+      targetCam.x-=tmx/cam.zoom;targetCam.y-=tmy/cam.zoom;_canvasDirty=true;
+      _panMomentumRAF=requestAnimationFrame(_tpTick);}
+    _panMomentumRAF=requestAnimationFrame(_tpTick);
+  }
+  isPanning=false; touchDragged=false; touches={};
 });
 
 // ─── Keyboard ─────────────────────────────
@@ -6567,6 +6595,7 @@ async function loadCanvasGraph(canvasId) {
   window._offCanvasEdges = data.edges.filter(e => !e.on_canvas);
 
   clusters = [];  // No clusters in canvas mode
+  _hiddenNodesDirty = true;
 
   // Update stats
   document.getElementById('stat-nodes').textContent = nodes.length;
