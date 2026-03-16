@@ -2230,6 +2230,8 @@ body.bottom-collapsed .stream-master-detail {
 .pd-boundary { fill: none; stroke: rgba(110,231,183,0.08); stroke-width: 1; }
 .pd-edge { fill: none; stroke-linecap: round; }
 .pd-node { cursor: pointer; }
+/* Suppress transitions during rAF loops */
+#pd-svg.pd-dragging .pd-node, #pd-svg.pd-flying .pd-node { transition: none !important; }
 .pd-node:hover > rect { filter: brightness(1.3); }
 .pd-node.pd-selected > rect {
   stroke: var(--accent) !important; stroke-width: 3;
@@ -3298,6 +3300,7 @@ let targetCam = { x: 0, y: 0, zoom: 1 };
 let dragNode = null;
 let hoveredNode = null;
 let selectedNode = null;
+let _lastCanvasClickPos = null; // screen {x,y} at last canvas node click — for pill positioning
 let addModeCanvas = null; // canvas object selected in add-mode widget
 let isPanning = false;
 let panStart = { x: 0, y: 0 };
@@ -3468,6 +3471,8 @@ const pdState = {
   bfsDepth: new Map(),          // nodeId → depth
   bfsChildren: new Map(),       // nodeId → [childIds]
   animRAF: null,                // animation frame id
+  _scratchPositions: new Map(), // zero-GC Mobius scratch - swap pattern
+  _svg: null,                   // current SVG element (set by renderPoincareGraph)
   diskCx: 0, diskCy: 0, diskR: 0, // screen coords of disk
   layoutMode: localStorage.getItem('om-pd-layout') || 'similarity', // 'graph' or 'similarity'
   simPull: parseFloat(localStorage.getItem('om-pd-pull')) || 0.3,  // power exponent for similarity pull
@@ -4506,6 +4511,7 @@ canvas.addEventListener('mouseup', e => {
     // Only open detail on clean click (no drag/pan)
     const hit = hitTest(e.clientX, e.clientY);
     if (hit) {
+      _lastCanvasClickPos = { x: e.clientX, y: e.clientY };
       if (isPhone) phoneNodeDetail(hit.id);
       else enterFocusView(hit.id);
     } else closeSearch();
@@ -6681,13 +6687,20 @@ function openCanvasModal(editCanvas = null, pendingNodeId = null) {
 }
 
 function nodeScreenPos(nodeId) {
-  // Map / Semantic: node exists in canvas world coords
+  // Map / Semantic: use last click pos if it's for this node (most reliable),
+  // otherwise fall back to worldToScreen (guards null x/y from unlaid nodes)
   if (CANVAS_VIEWS.includes(currentView)) {
+    const activeId = selectedNode?.id || streamSelectedId;
+    if (activeId === nodeId && _lastCanvasClickPos) return _lastCanvasClickPos;
     const n = nodeMap[nodeId];
-    if (n) {
+    if (n && n.x != null && n.y != null) {
       const s = worldToScreen(n.x, n.y);
-      return { x: s.x, y: s.y };
+      // Only return if it's actually on screen
+      if (s.x > -50 && s.x < window.innerWidth + 50 && s.y > -50 && s.y < window.innerHeight + 50)
+        return { x: s.x, y: s.y };
     }
+    // Last resort: use stored click pos regardless of which node
+    if (_lastCanvasClickPos) return _lastCanvasClickPos;
   }
   // Focus: SVG element with data-id
   if (currentView === 'focus') {
@@ -8791,6 +8804,19 @@ function renderPoincareGraph() {
 
   svg.innerHTML = html;
 
+  // Store SVG ref for cross-scope access (GL drag, fly animation)
+  pdState._svg = svg;
+
+  // Ensure WebGL canvas exists inside focus-graph-area (recreated each enterFocusView)
+  if (!document.getElementById('pd-webgl')) {
+    const _glc = document.createElement('canvas');
+    _glc.id = 'pd-webgl';
+    _glc.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;pointer-events:none;display:none;z-index:5';
+    const _ga = document.getElementById('focus-graph-area');
+    if (_ga) _ga.appendChild(_glc);
+    _glInited = false; // must re-init - canvas was just recreated
+  }
+
   // Build element caches to avoid querySelectorAll on every animation frame
   pdState.nodeEls.clear();
   pdState.edgeEls = [];
@@ -9234,12 +9260,15 @@ function _attachPoincareDrag(svg) {
     const aLen = cAbs(a);
     if (aLen > 0.9) { a[0] *= 0.9 / aLen; a[1] *= 0.9 / aLen; }
 
-    const newPositions = new Map();
-    for (const [id, pos] of pdState.positions) newPositions.set(id, mobiusTransform(pos, a));
-    pdState.positions = newPositions;
+    // Reuse scratch map - zero GC per frame (swap pattern)
+    const scratch = pdState._scratchPositions;
+    scratch.clear();
+    for (const [id, pos] of pdState.positions) scratch.set(id, mobiusTransform(pos, a));
+    const _tmp = pdState.positions; pdState.positions = scratch; pdState._scratchPositions = _tmp;
 
     // skipDetails=true: only update transforms (GPU path), skip sizes/edges/opacities
     _renderBlendedPositions(pdState.positions, cx, cy, R, svg, true);
+    if (_glInited) _glRender(); // WebGL2 fast path
 
     // Update connectors immediately every drag frame
     _updateConnectors();
@@ -9252,7 +9281,7 @@ function _attachPoincareDrag(svg) {
     function tick() {
       mvx *= 0.92;
       mvy *= 0.92;
-      if (Math.hypot(mvx, mvy) < 0.5) { momentumRAF = null; return; }
+      if (Math.hypot(mvx, mvy) < 0.5) { momentumRAF = null; _glDragEnd(); return; }
       applyDragTransform(-mvx, -mvy);
       momentumRAF = requestAnimationFrame(tick);
     }
@@ -9274,6 +9303,7 @@ function _attachPoincareDrag(svg) {
     velocityX = 0; velocityY = 0;
     lastMoveTime = performance.now();
     svg.style.cursor = 'grabbing';
+    _glDragStart();
     e.preventDefault();
   });
 
@@ -9300,6 +9330,7 @@ function _attachPoincareDrag(svg) {
       dragging = false;
       svg.style.cursor = '';
       if (dragMoved) startMomentum();
+      else _glDragEnd();
     }
   });
 
@@ -9315,6 +9346,7 @@ function _attachPoincareDrag(svg) {
     dragMoved = false;
     velocityX = 0; velocityY = 0;
     lastMoveTime = performance.now();
+    _glDragStart();
   }, { passive: true });
 
   svg.addEventListener('touchmove', (e) => {
@@ -9345,6 +9377,7 @@ function _attachPoincareDrag(svg) {
     if (found) {
       touchId = null;
       if (dragMoved) startMomentum();
+      else _glDragEnd();
     }
   }, { passive: true });
 
@@ -9500,6 +9533,7 @@ function animateToNode(targetId) {
               pdState.animRAF = requestAnimationFrame(settle);
             } else {
               pdState.animRAF = null;
+              pdState._svg?.classList.remove('pd-flying');
               renderPoincareGraph();
               buildSummaryRail();
               const rail2 = document.getElementById('focus-summary-rail');
@@ -9527,6 +9561,7 @@ function animateToNode(targetId) {
       // Snap sizes back to correct values before starting new fly
       _updatePdPositions(pdState.positions, pdState.diskCx, pdState.diskCy, pdState.diskR, false);
     }
+    pdState._svg?.classList.add('pd-flying');
     pdState.animRAF = requestAnimationFrame(frame);
   });
 }
@@ -9547,7 +9582,7 @@ function _updatePdPositions(positions, cx, cy, R, skipDetails) {
   // Hot path: only setAttribute('transform') — composited by GPU, no layout recalc
   for (const [id, sp] of pdState.screenPositions) {
     const g = pdState.nodeEls.get(id);
-    if (g) g.setAttribute('transform', `translate(${sp.sx.toFixed(1)},${sp.sy.toFixed(1)})`);
+    if (g) g.style.transform = `translate(${sp.sx.toFixed(1)}px,${sp.sy.toFixed(1)}px)`;
   }
 
   if (!skipDetails) {
@@ -9585,6 +9620,181 @@ function _updatePdPositions(positions, cx, cy, R, skipDetails) {
   updateSummaryRail();
 }
 
+
+// WebGL2 Instanced Renderer for Focus Disk
+// Single draw call during Mobius drag + momentum.
+// Falls back silently to SVG-only if WebGL2 unavailable.
+let _glInited = false;
+let _glCtx = null, _glProgram = null;
+let _glQuadBuf = null, _glInstanceBuf = null;
+let _glLocs = null;
+let _glInstanceArr = new Float32Array(2000);
+const _GL_FPI = 8; // floats per instance: sx,sy, radius, R,G,B,A, vs
+
+function _hexToRgb01(hex) {
+  return [
+    parseInt(hex.slice(1,3),16)/255,
+    parseInt(hex.slice(3,5),16)/255,
+    parseInt(hex.slice(5,7),16)/255,
+  ];
+}
+
+function _initWebGL() {
+  const canvas = document.getElementById('pd-webgl');
+  if (!canvas) return false;
+  const gl = canvas.getContext('webgl2', { antialias: true, premultipliedAlpha: false });
+  if (!gl) return false;
+  _glCtx = gl;
+
+  const vsSource = `#version 300 es
+    in vec2 a_quad;
+    in vec2 a_pos;
+    in float a_radius;
+    in vec4 a_color;
+    in float a_vs;
+    out vec2 v_uv; out vec4 v_color;
+    uniform vec2 u_res;
+    void main() {
+      vec2 sp = a_pos + a_quad * a_radius;
+      vec2 clip = sp / u_res * 2.0 - 1.0; clip.y = -clip.y;
+      gl_Position = vec4(clip, 0.0, 1.0);
+      v_uv = a_quad; v_color = a_color;
+    }`;
+  const fsSource = `#version 300 es
+    precision mediump float;
+    in vec2 v_uv; in vec4 v_color;
+    out vec4 fragColor;
+    void main() {
+      float d = length(v_uv);
+      float a = v_color.a * (1.0 - smoothstep(0.82, 1.0, d));
+      if (a < 0.01) discard;
+      float ring = smoothstep(0.72,0.78,d)*(1.0-smoothstep(0.88,1.0,d));
+      vec3 col = v_color.rgb*(0.25+0.75*(1.0-ring*0.6));
+      fragColor = vec4(col*a, a);
+    }`;
+
+  function mkShader(type, src) {
+    const s = gl.createShader(type);
+    gl.shaderSource(s, src); gl.compileShader(s);
+    if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) {
+      console.warn('[GL shader]', gl.getShaderInfoLog(s)); return null;
+    }
+    return s;
+  }
+  const vsh = mkShader(gl.VERTEX_SHADER, vsSource);
+  const fsh = mkShader(gl.FRAGMENT_SHADER, fsSource);
+  if (!vsh || !fsh) return false;
+  const prog = gl.createProgram();
+  gl.attachShader(prog, vsh); gl.attachShader(prog, fsh); gl.linkProgram(prog);
+  if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) {
+    console.warn('[GL link]', gl.getProgramInfoLog(prog)); return false;
+  }
+  _glProgram = prog;
+  _glLocs = {
+    a_quad:   gl.getAttribLocation(prog,'a_quad'),
+    a_pos:    gl.getAttribLocation(prog,'a_pos'),
+    a_radius: gl.getAttribLocation(prog,'a_radius'),
+    a_color:  gl.getAttribLocation(prog,'a_color'),
+    a_vs:     gl.getAttribLocation(prog,'a_vs'),
+    u_res:    gl.getUniformLocation(prog,'u_res'),
+  };
+  _glQuadBuf = gl.createBuffer();
+  gl.bindBuffer(gl.ARRAY_BUFFER, _glQuadBuf);
+  gl.bufferData(gl.ARRAY_BUFFER,
+    new Float32Array([-1,-1,1,-1,1,1,-1,-1,1,1,-1,1]), gl.STATIC_DRAW);
+  _glInstanceBuf = gl.createBuffer();
+  gl.enable(gl.BLEND);
+  gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
+  return true;
+}
+
+function _glResize(canvas) {
+  if (!_glCtx || !canvas) return;
+  const dpr = Math.min(window.devicePixelRatio||1,2);
+  const w = canvas.offsetWidth*dpr|0, h = canvas.offsetHeight*dpr|0;
+  if (canvas.width!==w||canvas.height!==h) {
+    canvas.width=w; canvas.height=h; _glCtx.viewport(0,0,w,h);
+  }
+}
+
+function _glRender() {
+  const gl = _glCtx;
+  if (!gl||!_glProgram||!_glLocs||!pdState.screenPositions.size) return;
+  const canvas = document.getElementById('pd-webgl');
+  if (!canvas||canvas.style.display==='none') return;
+  _glResize(canvas);
+  gl.clearColor(0,0,0,0); gl.clear(gl.COLOR_BUFFER_BIT);
+  gl.useProgram(_glProgram);
+  gl.uniform2f(_glLocs.u_res, canvas.width, canvas.height);
+  const N = pdState.screenPositions.size;
+  const need = N*_GL_FPI;
+  if (_glInstanceArr.length < need) _glInstanceArr = new Float32Array(need*2);
+  const dpr = Math.min(window.devicePixelRatio||1,2);
+  const { diskR: R } = pdState;
+  const _cr = Math.min(88, R*0.35);
+  let i = 0;
+  for (const [id, sp] of pdState.screenPositions) {
+    const node = nodeMap[id];
+    const hex = (window.TYPE_COLORS?.[node?.type])||'#6ee7b7';
+    const rgb = _hexToRgb01(hex);
+    const opacity = Math.max(0.12, Math.min(1.0, 0.3+sp.vs*0.7));
+    const drawR = (id===focusState.centerId)?Math.max(sp.r,_cr):sp.r;
+    const o = i++*_GL_FPI;
+    _glInstanceArr[o]   = sp.sx*dpr;
+    _glInstanceArr[o+1] = sp.sy*dpr;
+    _glInstanceArr[o+2] = drawR*dpr;
+    _glInstanceArr[o+3] = rgb[0]; _glInstanceArr[o+4] = rgb[1]; _glInstanceArr[o+5] = rgb[2];
+    _glInstanceArr[o+6] = opacity;
+    _glInstanceArr[o+7] = sp.vs;
+  }
+  const STRIDE = _GL_FPI*4;
+  const L = _glLocs;
+  gl.bindBuffer(gl.ARRAY_BUFFER, _glQuadBuf);
+  gl.enableVertexAttribArray(L.a_quad);
+  gl.vertexAttribPointer(L.a_quad,2,gl.FLOAT,false,0,0);
+  gl.vertexAttribDivisor(L.a_quad,0);
+  gl.bindBuffer(gl.ARRAY_BUFFER, _glInstanceBuf);
+  gl.bufferData(gl.ARRAY_BUFFER, _glInstanceArr.subarray(0,need), gl.DYNAMIC_DRAW);
+  gl.enableVertexAttribArray(L.a_pos);
+  gl.vertexAttribPointer(L.a_pos,2,gl.FLOAT,false,STRIDE,0);
+  gl.vertexAttribDivisor(L.a_pos,1);
+  gl.enableVertexAttribArray(L.a_radius);
+  gl.vertexAttribPointer(L.a_radius,1,gl.FLOAT,false,STRIDE,8);
+  gl.vertexAttribDivisor(L.a_radius,1);
+  gl.enableVertexAttribArray(L.a_color);
+  gl.vertexAttribPointer(L.a_color,4,gl.FLOAT,false,STRIDE,12);
+  gl.vertexAttribDivisor(L.a_color,1);
+  gl.enableVertexAttribArray(L.a_vs);
+  gl.vertexAttribPointer(L.a_vs,1,gl.FLOAT,false,STRIDE,28);
+  gl.vertexAttribDivisor(L.a_vs,1);
+  gl.drawArraysInstanced(gl.TRIANGLES,0,6,N);
+}
+
+function _glDragStart() {
+  const s = pdState._svg;
+  if (s) s.classList.add('pd-dragging');
+  for (const g of pdState.nodeEls.values()) g.style.willChange='transform';
+  if (!_glInited) _glInited = _initWebGL();
+  if (!_glInited) return;
+  const glc = document.getElementById('pd-webgl');
+  if (glc) { glc.style.display='block'; _glResize(glc); }
+  const ng = s?.querySelector('#pd-nodes');
+  if (ng) ng.style.opacity='0';
+}
+
+function _glDragEnd() {
+  const s = pdState._svg;
+  if (s) s.classList.remove('pd-dragging');
+  for (const g of pdState.nodeEls.values()) g.style.willChange='';
+  const glc = document.getElementById('pd-webgl');
+  if (glc) glc.style.display='none';
+  const ng = s?.querySelector('#pd-nodes');
+  if (ng) ng.style.opacity='';
+  if (pdState.positions.size>0) {
+    _updatePdPositions(pdState.positions,pdState.diskCx,pdState.diskCy,pdState.diskR,false);
+  }
+}
+
 // Used during settle phase and drag
 function _renderBlendedPositions(positions, cx, cy, R, svg, skipDetails) {
   _updatePdPositions(positions, cx, cy, R, skipDetails);
@@ -9592,9 +9802,10 @@ function _renderBlendedPositions(positions, cx, cy, R, svg, skipDetails) {
 
 // Used during fly-through animation frames
 function updatePoincarePositions(a, cx, cy, R, svg) {
-  const transformed = new Map();
-  for (const [id, pos] of pdState.positions) transformed.set(id, mobiusTransform(pos, a));
-  _updatePdPositions(transformed, cx, cy, R, true); // skip details during flythrough
+  const scratch = pdState._scratchPositions;
+  scratch.clear();
+  for (const [id, pos] of pdState.positions) scratch.set(id, mobiusTransform(pos, a));
+  _updatePdPositions(scratch, cx, cy, R, true); // skip details during flythrough
 }
 
 // ─── Summary Rail + Connector System ─────────────────────────────────────────
